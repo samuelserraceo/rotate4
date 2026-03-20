@@ -18,6 +18,7 @@ export default function MatchmakingPage() {
   const intervalRef               = useRef<NodeJS.Timeout | null>(null)
   const matchCheckRef             = useRef<NodeJS.Timeout | null>(null)
   const mounted                   = useRef(true)
+  const waitTimeRef               = useRef(0)
 
   const maxPlayers = mode === '4p' ? 4 : 2
 
@@ -41,7 +42,7 @@ export default function MatchmakingPage() {
 
     // Wait time counter
     intervalRef.current = setInterval(() => {
-      if (mounted.current) setWaitTime(t => t + 1)
+      if (mounted.current) setWaitTime(t => { waitTimeRef.current = t + 1; return t + 1 })
     }, 1000)
 
     init()
@@ -72,19 +73,39 @@ export default function MatchmakingPage() {
 
     // Try to create a match
     const fullMode = `${gameType}_${mode}` as const
-    const { data: queue } = await supabase
+    const { data: allQueue } = await supabase
       .from('matchmaking_queue')
       .select('*, profiles(id,elo)')
       .eq('mode', mode)
       .eq('game_type', gameType)
       .order('joined_at')
-      .limit(maxPlayers)
+      .limit(50)
 
-    if (!queue || queue.length < maxPlayers) return
+    if (!allQueue || allQueue.length < maxPlayers) return
+
+    const me = allQueue.find(q => q.profile_id === userId)
+    if (!me) return
+
+    // For competitive, filter by ELO range (±200 base, +100 per 30s of waiting)
+    let queue = allQueue
+    if (gameType === 'competitive') {
+      const myElo = (me.profiles as Profile)?.elo ?? me.elo ?? 1200
+      const eloRange = 200 + Math.floor(waitTimeRef.current / 30) * 100
+      queue = allQueue.filter(q => {
+        const qElo = (q.profiles as Profile)?.elo ?? q.elo ?? 1200
+        return Math.abs(qElo - myElo) <= eloRange
+      })
+    }
+
+    if (queue.length < maxPlayers) return
     if (!queue.find(q => q.profile_id === userId)) return
 
+    // Slice to exact needed count, oldest waiters first
+    const matchedQueue = queue.slice(0, maxPlayers)
+    if (!matchedQueue.find(q => q.profile_id === userId)) return
+
     // We have enough players — create game (first in queue is host)
-    if (queue[0].profile_id !== userId) return // let first player create
+    if (matchedQueue[0].profile_id !== userId) return // let first player create
 
     if (mounted.current) setStatus('Match found! Creating game…')
 
@@ -96,15 +117,15 @@ export default function MatchmakingPage() {
     if (!game) return
 
     const symbols = ['X', 'O', 'W', 'M']
-    for (let i = 0; i < queue.length; i++) {
+    for (let i = 0; i < matchedQueue.length; i++) {
       await supabase.from('game_players').insert({
         game_id: game.id,
-        profile_id: queue[i].profile_id,
+        profile_id: matchedQueue[i].profile_id,
         symbol: symbols[i],
         player_index: i,
-        elo_before: (queue[i].profiles as Profile)?.elo ?? 1200,
+        elo_before: (matchedQueue[i].profiles as Profile)?.elo ?? 1200,
       })
-      await supabase.from('matchmaking_queue').delete().eq('profile_id', queue[i].profile_id)
+      await supabase.from('matchmaking_queue').delete().eq('profile_id', matchedQueue[i].profile_id)
     }
 
     if (matchCheckRef.current) clearInterval(matchCheckRef.current)
@@ -139,6 +160,11 @@ export default function MatchmakingPage() {
         <p className="text-slate-500 text-sm mb-1">
           {gameType === 'competitive' ? '⚔️ Ranked' : '🎮 Casual'} · {mode.toUpperCase()}
         </p>
+        {gameType === 'competitive' && profile && (
+          <p className="text-slate-600 text-xs mb-1">
+            ELO range: {(profile.elo ?? 1200) - (200 + Math.floor(waitTime / 30) * 100)} – {(profile.elo ?? 1200) + (200 + Math.floor(waitTime / 30) * 100)}
+          </p>
+        )}
         <p className="text-slate-600 text-xs mb-6">Wait time: {formatTime(waitTime)}</p>
 
         {/* Player slots */}

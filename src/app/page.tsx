@@ -14,7 +14,7 @@ export default function LobbyPage() {
   const [friendRequest, setFriendRequest] = useState('')
   const [frStatus, setFrStatus]     = useState<string | null>(null)
   const [activeTab, setActiveTab]   = useState<'play' | 'friends'>('play')
-  const [hosting, setHosting]       = useState<{ code: string; gameId: string } | null>(null)
+  const [hostingGame, setHostingGame] = useState<{ code: string; gameId: string; maxPlayers: number } | null>(null)
   const [joiningCode, setJoiningCode] = useState('')
   const [loading, setLoading]       = useState(true)
 
@@ -77,11 +77,11 @@ export default function LobbyPage() {
 
   const createHostedGame = async (mode: 'casual_1v1' | 'casual_4p') => {
     if (!profile) return
+    const maxPlayers = mode === 'casual_4p' ? 4 : 2
     const code = Math.random().toString(36).substring(2, 7).toUpperCase()
     const { data: game } = await supabase.from('games').insert({
       mode, host_id: profile.id, join_code: code,
-      max_players: mode === 'casual_4p' ? 4 : 2,
-      status: 'waiting',
+      max_players: maxPlayers, status: 'waiting',
     }).select().single()
     if (!game) return
 
@@ -89,9 +89,35 @@ export default function LobbyPage() {
       game_id: game.id, profile_id: profile.id,
       symbol: 'X', player_index: 0,
     })
-    setHosting({ code, gameId: game.id })
-    router.push(`/game/${game.id}`)
+    setHostingGame({ code, gameId: game.id, maxPlayers })
   }
+
+  const cancelHostedGame = async () => {
+    if (!hostingGame) return
+    await supabase.from('game_players').delete().eq('game_id', hostingGame.gameId)
+    await supabase.from('games').delete().eq('id', hostingGame.gameId)
+    setHostingGame(null)
+  }
+
+  // Watch for players joining the hosted game
+  useEffect(() => {
+    if (!hostingGame) return
+    const channel = supabase.channel(`host-watch-${hostingGame.gameId}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'game_players',
+        filter: `game_id=eq.${hostingGame.gameId}`,
+      }, async () => {
+        const { data: gp } = await supabase
+          .from('game_players').select('id').eq('game_id', hostingGame.gameId)
+        if (gp && gp.length >= hostingGame.maxPlayers) {
+          await supabase.from('games').update({ status: 'active' }).eq('id', hostingGame.gameId)
+          router.push(`/game/${hostingGame.gameId}`)
+        }
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hostingGame])
 
   const joinWithCode = async () => {
     if (!profile || !joiningCode.trim()) return
@@ -242,8 +268,30 @@ export default function LobbyPage() {
           </button>
         </div>
 
+        {/* HOSTING PANEL — shown instead of play tab when hosting */}
+        {hostingGame && (
+          <div className="card border-neon-cyan/20 text-center space-y-4 animate-fade-in">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-300">Waiting for players…</h3>
+              <div className="w-2 h-2 rounded-full bg-neon-cyan animate-pulse" />
+            </div>
+            <p className="text-xs text-slate-500">Share this code with your opponent</p>
+            <div className="bg-slate-900 rounded-xl py-4 px-6">
+              <p className="text-4xl font-black tracking-[0.3em] text-neon-cyan text-glow-cyan">
+                {hostingGame.code}
+              </p>
+            </div>
+            <p className="text-xs text-slate-600">
+              {hostingGame.maxPlayers === 2 ? '1v1' : '4-Player'} · Casual · Waiting for {hostingGame.maxPlayers - 1} more player{hostingGame.maxPlayers > 2 ? 's' : ''}
+            </p>
+            <button onClick={cancelHostedGame} className="btn-ghost w-full text-sm text-red-400 hover:text-red-300 border-red-500/20 hover:border-red-500/40">
+              ✕ Cancel &amp; Return to Lobby
+            </button>
+          </div>
+        )}
+
         {/* PLAY TAB */}
-        {activeTab === 'play' && (
+        {!hostingGame && activeTab === 'play' && (
           <div className="space-y-4 animate-fade-in">
             {/* Casual */}
             <div>
@@ -291,7 +339,7 @@ export default function LobbyPage() {
         )}
 
         {/* FRIENDS TAB */}
-        {activeTab === 'friends' && (
+        {!hostingGame && activeTab === 'friends' && (
           <div className="space-y-4 animate-fade-in">
             {/* Add friend */}
             <div className="card">
