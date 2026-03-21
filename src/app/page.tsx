@@ -76,9 +76,9 @@ export default function LobbyPage() {
     router.push('/login')
   }
 
-  const createHostedGame = async (mode: 'casual_1v1' | 'casual_4p') => {
+  const createHostedGame = async (mode: 'hosted_1v1' | 'hosted_4p') => {
     if (!profile) return
-    const maxPlayers = mode === 'casual_4p' ? 4 : 2
+    const maxPlayers = mode === 'hosted_4p' ? 4 : 2
     const code = Math.random().toString(36).substring(2, 7).toUpperCase()
     const { data: game } = await supabase.from('games').insert({
       mode, host_id: profile.id, join_code: code,
@@ -126,7 +126,7 @@ export default function LobbyPage() {
     router.push(`/game/${game.id}`)
   }
 
-  const enterMatchmaking = async (mode: '1v1' | '4p', type: 'casual' | 'competitive') => {
+  const enterMatchmaking = async (mode: '1v1' | '4p') => {
     if (!profile) return
     const elo = mode === '1v1'
       ? (profile.elo_1v1 ?? profile.elo ?? 1200)
@@ -134,9 +134,9 @@ export default function LobbyPage() {
     // Remove from queue first (idempotent)
     await supabase.from('matchmaking_queue').delete().eq('profile_id', profile.id)
     await supabase.from('matchmaking_queue').insert({
-      profile_id: profile.id, mode, game_type: type, elo,
+      profile_id: profile.id, mode, game_type: 'competitive', elo,
     })
-    router.push(`/matchmaking?mode=${mode}&type=${type}`)
+    router.push(`/matchmaking?mode=${mode}`)
   }
 
   const sendFriendRequest = async () => {
@@ -250,12 +250,41 @@ export default function LobbyPage() {
         {/* PLAY TAB */}
         {activeTab === 'play' && (
           <div className="space-y-4 animate-fade-in">
-            {/* Casual */}
+            {/* Ranked Matchmaking — main play buttons */}
             <div>
-              <h3 className="text-xs text-slate-500 uppercase tracking-widest mb-2">Casual</h3>
+              <h3 className="text-xs text-slate-500 uppercase tracking-widest mb-2">Ranked</h3>
               <div className="grid grid-cols-2 gap-3">
-                <ModeCard label="1v1" type="casual" onMatchmake={() => enterMatchmaking('1v1', 'casual')} onHost={() => createHostedGame('casual_1v1')} />
-                <ModeCard label="4-Player" type="casual" onMatchmake={() => enterMatchmaking('4p', 'casual')} onHost={() => createHostedGame('casual_4p')} />
+                <button onClick={() => enterMatchmaking('1v1')}
+                  className="card border-neon-cyan/10 hover:border-neon-cyan/30 transition-all text-center py-5 group">
+                  <p className="text-2xl mb-1">⚔️</p>
+                  <p className="font-semibold text-slate-200 group-hover:text-neon-cyan transition-colors text-sm">1v1 Ranked</p>
+                  <p className="text-xs text-slate-500 mt-1">ELO matchmaking</p>
+                </button>
+                <button onClick={() => enterMatchmaking('4p')}
+                  className="card border-neon-purple/10 hover:border-neon-purple/30 transition-all text-center py-5 group">
+                  <p className="text-2xl mb-1">🏟️</p>
+                  <p className="font-semibold text-slate-200 group-hover:text-neon-purple transition-colors text-sm">4P Ranked</p>
+                  <p className="text-xs text-slate-500 mt-1">ELO matchmaking</p>
+                </button>
+              </div>
+            </div>
+
+            {/* Host a game — no rewards */}
+            <div>
+              <h3 className="text-xs text-slate-500 uppercase tracking-widest mb-2">Host (No Rewards)</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => createHostedGame('hosted_1v1')}
+                  className="card border-white/5 hover:border-white/20 transition-all text-center py-4 group">
+                  <p className="text-xl mb-1">🏠</p>
+                  <p className="font-semibold text-slate-300 group-hover:text-white transition-colors text-sm">Host 1v1</p>
+                  <p className="text-xs text-slate-600 mt-1">Private room</p>
+                </button>
+                <button onClick={() => createHostedGame('hosted_4p')}
+                  className="card border-white/5 hover:border-white/20 transition-all text-center py-4 group">
+                  <p className="text-xl mb-1">🏠</p>
+                  <p className="font-semibold text-slate-300 group-hover:text-white transition-colors text-sm">Host 4P</p>
+                  <p className="text-xs text-slate-600 mt-1">Private room</p>
+                </button>
               </div>
             </div>
 
@@ -274,30 +303,13 @@ export default function LobbyPage() {
               </div>
             </div>
 
-            {/* Competitive */}
-            <div>
-              <h3 className="text-xs text-slate-500 uppercase tracking-widest mb-2">Competitive (Ranked)</h3>
-              <div className="grid grid-cols-3 gap-2">
-                <button onClick={() => enterMatchmaking('1v1', 'competitive')}
-                  className="card border-neon-cyan/10 hover:border-neon-cyan/30 transition-all text-center py-4 group">
-                  <p className="text-2xl mb-1">⚔️</p>
-                  <p className="font-semibold text-slate-200 group-hover:text-neon-cyan transition-colors text-sm">1v1</p>
-                  <p className="text-xs text-slate-500 mt-1">ELO match</p>
-                </button>
-                <button onClick={() => enterMatchmaking('4p', 'competitive')}
-                  className="card border-neon-purple/10 hover:border-neon-purple/30 transition-all text-center py-4 group">
-                  <p className="text-2xl mb-1">🏟️</p>
-                  <p className="font-semibold text-slate-200 group-hover:text-neon-purple transition-colors text-sm">4-Player</p>
-                  <p className="text-xs text-slate-500 mt-1">ELO match</p>
-                </button>
-                <button onClick={() => router.push('/ranks')}
-                  className="card border-white/5 hover:border-yellow-500/30 transition-all text-center py-4 group">
-                  <p className="text-2xl mb-1">🏆</p>
-                  <p className="font-semibold text-slate-200 group-hover:text-yellow-400 transition-colors text-sm">Ranks</p>
-                  <p className="text-xs text-slate-500 mt-1">View road</p>
-                </button>
-              </div>
-            </div>
+            {/* Ranks */}
+            <button onClick={() => router.push('/ranks')}
+              className="card border-yellow-500/10 hover:border-yellow-500/30 transition-all text-center py-4 group w-full">
+              <p className="text-2xl mb-1">🏆</p>
+              <p className="font-semibold text-slate-200 group-hover:text-yellow-400 transition-colors text-sm">View Ranks</p>
+              <p className="text-xs text-slate-500 mt-1">See the rank road</p>
+            </button>
 
             {/* ELO Rank Bar — Clash Royale style */}
             {profile && (() => {
@@ -425,7 +437,7 @@ export default function LobbyPage() {
 
   async function inviteFriendToGame(friendId: string, hostId: string) {
     const { data: game } = await supabase.from('games').insert({
-      mode: 'casual_1v1', host_id: hostId,
+      mode: 'hosted_1v1', host_id: hostId,
       join_code: Math.random().toString(36).substring(2,7).toUpperCase(),
       max_players: 2, status: 'waiting',
     }).select().single()
@@ -441,18 +453,3 @@ export default function LobbyPage() {
   }
 }
 
-function ModeCard({ label, type, onMatchmake, onHost }: {
-  label: string; type: 'casual'; onMatchmake: () => void; onHost: () => void
-}) {
-  return (
-    <div className="card border-white/5 space-y-2">
-      <p className="font-semibold text-slate-200 text-sm">{label}</p>
-      <button onClick={onMatchmake} className="btn-secondary w-full text-xs py-2">
-        🔍 Find Match
-      </button>
-      <button onClick={onHost} className="btn-ghost w-full text-xs py-2 border border-white/10">
-        🏠 Host
-      </button>
-    </div>
-  )
-}
