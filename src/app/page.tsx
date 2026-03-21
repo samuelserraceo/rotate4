@@ -181,6 +181,7 @@ export default function LobbyPage() {
           ROTATE<span className="text-neon-purple text-glow-purple">4</span>
         </h1>
         <div className="flex items-center gap-3">
+          <button onClick={() => router.push('/friends')} className="btn-ghost text-xs">Friends</button>
           <button onClick={handleSignOut} className="btn-ghost text-xs">Sign out</button>
         </div>
       </nav>
