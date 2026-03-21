@@ -411,7 +411,7 @@ export default function GamePage() {
         const placement = isWin ? 1 : i + 1
         const coinKey = placement as 1 | 2 | 3 | 4
         const earned = coins[coinKey] ?? coins[4]
-        const eloChange = isWin ? 32 : -8
+        const eloChange = isWin ? ELO_CONFIG.win_reward : -ELO_CONFIG.loss_penalty
         const newElo = Math.max(0, pElo + eloChange)
         await supabase.from('profiles').update({
           elo_4p: newElo, coins: p.coins + earned,
