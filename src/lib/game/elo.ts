@@ -1,39 +1,22 @@
 import { ELO_CONFIG } from '@/types'
 
 /**
- * Standard ELO expected score for player A against player B.
- */
-function expectedScore(eloA: number, eloB: number): number {
-  return 1 / (1 + Math.pow(10, (eloB - eloA) / 400))
-}
-
-/**
- * K-factor based on number of games played.
- */
-function kFactor(gamesPlayed: number): number {
-  return gamesPlayed < ELO_CONFIG.new_threshold ? ELO_CONFIG.k_new : ELO_CONFIG.k_established
-}
-
-/**
- * Calculate ELO changes for a 1v1 match.
+ * Calculate ELO changes for a 1v1 match (flat rewards).
+ * Winner gains ELO_CONFIG.win_reward, loser loses ELO_CONFIG.loss_penalty.
  * @returns [newEloWinner, newEloLoser, changeWinner, changeLoser]
  */
 export function calculate1v1Elo(
   winnerElo: number,
   loserElo: number,
-  winnerGames: number,
-  loserGames: number
+  _winnerGames: number,
+  _loserGames: number
 ): [number, number, number, number] {
-  const expected = expectedScore(winnerElo, loserElo)
-  const kW = kFactor(winnerGames)
-  const kL = kFactor(loserGames)
-
-  const changeWinner = Math.round(kW * (1 - expected))
-  const changeLoser  = Math.round(kL * (0 - (1 - expected)))
+  const changeWinner =  ELO_CONFIG.win_reward
+  const changeLoser  = -ELO_CONFIG.loss_penalty
 
   return [
-    winnerElo + changeWinner,
-    loserElo + changeLoser,
+    Math.max(0, winnerElo + changeWinner),
+    Math.max(0, loserElo  + changeLoser),
     changeWinner,
     changeLoser,
   ]
