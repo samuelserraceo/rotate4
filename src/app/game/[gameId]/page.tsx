@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import GameBoard from '@/components/game/Board'
 import WinModal from '@/components/game/WinModal'
 import type { Game, GamePlayer, Profile, PlayerSymbol, Board } from '@/types'
-import { COIN_REWARDS } from '@/types'
+import { COIN_REWARDS, ELO_CONFIG } from '@/types'
 import { dropPiece, rotateBoard, checkWin, isBoardFull, createBoard } from '@/lib/game/board'
 import { calculate1v1Elo } from '@/lib/game/elo'
 
@@ -396,7 +396,7 @@ export default function GamePage() {
         const placement = isWin ? 1 : i + 1
         const coinKey = placement as 1 | 2 | 3 | 4
         const earned = applyMultiplier(coins[coinKey] ?? coins[4])
-        const eloChange = isWin ? 32 : -8
+        const eloChange = isWin ? ELO_CONFIG.win_reward_4p : -ELO_CONFIG.loss_penalty_4p
         const newElo = Math.max(0, pElo + eloChange)
         await supabase.from('profiles').update({
           elo_4p: newElo, coins: p.coins + earned,
@@ -440,6 +440,44 @@ export default function GamePage() {
     }
     router.push('/')
   }
+  // Leave game: award win to opponent in competitive, deduct elo on leave
+  const handleLeaveGame = useCallback(async () => {
+    const profile = myProfileRef.current
+    const game = gameRef.current
+    const currentPlayers = playersRef.current
+    if (!profile || !game) { router.push('/'); return }
+    if (game.host_id || game.mode.startsWith('hosted')) { router.push('/'); return }
+    const is1v1 = game.mode.endsWith('1v1')
+    if (is1v1 && currentPlayers.length === 2) {
+      const opponent = currentPlayers.find(p => p.profile_id !== profile.id)
+      if (opponent) {
+        await distributeRewards(opponent.profile_id)
+        await supabase.from('games').update({
+          status: 'abandoned',
+          winner_id: opponent.profile_id,
+          completed_at: new Date().toISOString(),
+        }).eq('id', game.id)
+      }
+    } else if (!is1v1 && currentPlayers.length > 0) {
+      const { data: fp } = await supabase.from('profiles').select('*').eq('id', profile.id)
+      const p = fp?.[0]
+      if (p) {
+        const pElo = p.elo_4p ?? p.elo ?? 0
+        const eloChange = -ELO_CONFIG.loss_penalty_4p
+        const newElo = Math.max(0, pElo + eloChange)
+        await supabase.from('profiles').update({ elo_4p: newElo }).eq('id', p.id)
+        await supabase.from('game_players').update({
+          elo_change: eloChange, placement: currentPlayers.length,
+        }).eq('game_id', game.id).eq('profile_id', p.id)
+      }
+      await supabase.from('games').update({
+        status: 'abandoned', completed_at: new Date().toISOString(),
+      }).eq('id', game.id)
+    }
+    router.push('/')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, router, distributeRewards])
+
 
   // ââ Render ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   if (loading) return <LoadingScreen />
@@ -582,7 +620,7 @@ export default function GamePage() {
       {/* Leave button */}
       {gameActive && (
         <button
-          onClick={() => router.push('/')}
+          onClick={handleLeaveGame}
           className="mt-3 text-xs text-slate-700 hover:text-slate-500 transition-colors"
         >
           Leave game
