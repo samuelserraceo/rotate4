@@ -126,9 +126,8 @@ export const COIN_REWARDS = {
 
 export const ELO_CONFIG = {
   starting: 1200,
-  k_new: 32,   // < 30 games
-  k_established: 16,
-  new_threshold: 30,
+  win_reward: 150,
+  loss_penalty: 115,
 } as const
 
 // Symbol → corner position for display
