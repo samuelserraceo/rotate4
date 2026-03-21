@@ -127,7 +127,9 @@ export const COIN_REWARDS = {
 export const ELO_CONFIG = {
   starting: 1200,
   win_reward: 150,
-  loss_penalty: 115,
+  loss_penalty: 100,
+  win_reward_4p: 200,
+  loss_penalty_4p: 75,
 } as const
 
 // Symbol → corner position for display
