@@ -155,6 +155,7 @@ export default function GamePage() {
         playersRef.current = playersData as PlayerWithProfile[]
         const me = playersData.find((p: GamePlayer) => p.profile_id === user.id)
         if (me) setMySymbol(me.symbol as PlayerSymbol)
+        loadSkinColors(playersData as PlayerWithProfile[])
       }
 
       if (mountedRef.current) setLoading(false)
@@ -208,6 +209,7 @@ export default function GamePage() {
         if (mountedRef.current && pd) {
           setPlayers(pd as PlayerWithProfile[])
           playersRef.current = pd as PlayerWithProfile[]
+          loadSkinColors(pd as PlayerWithProfile[])
         }
       })
       .subscribe()
