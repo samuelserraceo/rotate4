@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import GameBoard from '@/components/game/Board'
 import WinModal from '@/components/game/WinModal'
-import type { Game, GamePlayer, Profile, PlayerSymbol, Board } from '@/types'
+import type { Game, GamePlayer, Profile, PlayerSymbol, Board, Skin } from '@/types'
 import { COIN_REWARDS } from '@/types'
 import { dropPiece, rotateBoard, checkWin, isBoardFull, createBoard } from '@/lib/game/board'
 import { calculate1v1Elo } from '@/lib/game/elo'
@@ -58,6 +58,29 @@ export default function GamePage() {
   useEffect(() => { myProfileRef.current = myProfile }, [myProfile])
   useEffect(() => { gameRef.current = game }, [game])
   useEffect(() => { currentTurnRef.current = currentTurn }, [currentTurn])
+
+
+
+  // ── Load skin colors for players ────────────────────────────────────────────
+  const loadSkinColors = useCallback(async (gamePlayers: PlayerWithProfile[]) => {
+    const skinIds = gamePlayers
+      .map(p => p.profiles?.equipped_skin_id)
+      .filter((id): id is string => !!id)
+    if (skinIds.length === 0) return
+    const { data: skins } = await supabase
+      .from('skins').select('*').in('id', skinIds)
+    if (!skins || skins.length === 0) return
+    const skinMap = Object.fromEntries(skins.map((s: Skin) => [s.id, s]))
+    const colors: Partial<Record<PlayerSymbol, { color: string; glow: string }>> = {}
+    for (const p of gamePlayers) {
+      const skinId = p.profiles?.equipped_skin_id
+      if (skinId && skinMap[skinId]) {
+        const skin = skinMap[skinId]
+        colors[p.symbol as PlayerSymbol] = { color: skin.color, glow: skin.glow_color }
+      }
+    }
+    if (mountedRef.current) setPlayerColors(colors)
+  }, [supabase])
 
   // ── 30-second turn timer ────────────────────────────────────────────────────
   useEffect(() => {
@@ -585,6 +608,7 @@ export default function GamePage() {
           onColumnClick={handleColumnClick}
           disabled={!gameActive || !isMyTurn}
           recentDrop={lastDrop}
+          playerColors={playerColors}
         />
       </div>
 
