@@ -154,11 +154,12 @@ export default function GamePage() {
         const newRotCount = g.rotation_count ?? 0
 
         if (newRotCount > rotationCountRef.current) {
-          // Rotation happened — animate on OLD board, then switch to new board
+          // Rotation happened — CSS spin, then swap to rotated board
           rotationCountRef.current = newRotCount
           setRotationCount(newRotCount)
           pendingBoardRef.current = g.board_state
           setIsRotating(true)
+
           setTimeout(() => {
             if (!mountedRef.current) return
             setIsRotating(false)
@@ -277,10 +278,25 @@ export default function GamePage() {
       return
     }
 
-    // Apply rotation (subscription will handle the animation)
+    // Apply rotation with local animation
     if (causedRotation) {
       newRotationCount += 1
-      finalBoard = rotateBoard(finalBoard)
+      finalBoard = rotateBoard(result.newBoard)
+
+      // Animate: CSS spin, then swap to rotated board (pieces stick to walls)
+      setIsRotating(true)
+      rotationCountRef.current = newRotationCount
+      setRotationCount(newRotationCount)
+
+      await new Promise<void>((resolve) => {
+        setTimeout(() => {
+          if (!mountedRef.current) { resolve(); return }
+          setIsRotating(false)
+          setBoard(finalBoard)
+          resolve()
+        }, 450)
+      })
+
       const winAfter = checkWin(finalBoard, mySymbol)
       if (winAfter.hasWon) {
         setWinningCells(winAfter.winningCells ?? null)
@@ -340,10 +356,9 @@ export default function GamePage() {
     const game = gameRef.current
     if (!game) return
 
-    // Hosted games — no rewards
-    if (game.host_id) return
+    // Hosted games — no rewards at all
+    if (game.host_id || game.mode.startsWith('hosted')) return
 
-    const isComp = game.mode.startsWith('competitive')
     const is1v1  = game.mode.endsWith('1v1')
     const currentPlayers = playersRef.current
 
@@ -353,9 +368,8 @@ export default function GamePage() {
 
     const profileMap = Object.fromEntries(freshProfiles.map((p: Profile) => [p.id, p]))
 
-    const applyMultiplier = (v: number) => Math.round(v * 1.0)
-
-    if (isComp && is1v1 && winnerId && currentPlayers.length === 2) {
+    if (is1v1 && winnerId && currentPlayers.length === 2) {
+      // Competitive 1v1 — ELO + coins
       const winnerPlayer = currentPlayers.find(p => p.profile_id === winnerId)!
       const loserPlayer  = currentPlayers.find(p => p.profile_id !== winnerId)!
       const wP = profileMap[winnerPlayer.profile_id]
@@ -369,24 +383,25 @@ export default function GamePage() {
       const coins = COIN_REWARDS.competitive_1v1
 
       await supabase.from('profiles').update({
-        elo_1v1: newWElo, coins: wP.coins + applyMultiplier(coins.win),
+        elo_1v1: newWElo, coins: wP.coins + coins.win,
         games_played: wP.games_played + 1, games_won: wP.games_won + 1,
       }).eq('id', wP.id)
       await supabase.from('game_players').update({
-        elo_before: wElo, elo_after: newWElo, elo_change: applyMultiplier(wChange),
-        coins_earned: applyMultiplier(coins.win), placement: 1,
+        elo_before: wElo, elo_after: newWElo, elo_change: wChange,
+        coins_earned: coins.win, placement: 1,
       }).eq('game_id', gameId).eq('profile_id', wP.id)
 
       await supabase.from('profiles').update({
-        elo_1v1: newLElo, coins: lP.coins + applyMultiplier(coins.loss),
+        elo_1v1: newLElo, coins: lP.coins + coins.loss,
         games_played: lP.games_played + 1,
       }).eq('id', lP.id)
       await supabase.from('game_players').update({
-        elo_before: lElo, elo_after: newLElo, elo_change: applyMultiplier(lChange),
-        coins_earned: applyMultiplier(coins.loss), placement: 2,
+        elo_before: lElo, elo_after: newLElo, elo_change: lChange,
+        coins_earned: coins.loss, placement: 2,
       }).eq('game_id', gameId).eq('profile_id', lP.id)
 
-    } else if (isComp && !is1v1 && winnerId) {
+    } else if (!is1v1 && winnerId) {
+      // Competitive 4P — ELO + coins
       const coins = COIN_REWARDS.competitive_4p
       for (let i = 0; i < currentPlayers.length; i++) {
         const pl = currentPlayers[i]
@@ -395,7 +410,7 @@ export default function GamePage() {
         const isWin = pl.profile_id === winnerId
         const placement = isWin ? 1 : i + 1
         const coinKey = placement as 1 | 2 | 3 | 4
-        const earned = applyMultiplier(coins[coinKey] ?? coins[4])
+        const earned = coins[coinKey] ?? coins[4]
         const eloChange = isWin ? 32 : -8
         const newElo = Math.max(0, pElo + eloChange)
         await supabase.from('profiles').update({
@@ -405,25 +420,6 @@ export default function GamePage() {
         await supabase.from('game_players').update({
           elo_before: pElo, elo_after: newElo, elo_change: eloChange,
           coins_earned: earned, placement,
-        }).eq('game_id', gameId).eq('profile_id', p.id)
-      }
-    } else {
-      // Casual (1v1 or 4p)
-      const coins = is1v1 ? COIN_REWARDS.casual_1v1 : COIN_REWARDS.casual_4p
-      for (let i = 0; i < currentPlayers.length; i++) {
-        const pl = currentPlayers[i]
-        const isWin = pl.profile_id === winnerId
-        const p = profileMap[pl.profile_id]
-        const earned = is1v1
-          ? applyMultiplier(isWin ? (coins as {win:number;loss:number}).win : (coins as {win:number;loss:number}).loss)
-          : applyMultiplier((coins as Record<number,number>)[isWin ? 1 : i + 1] ?? (coins as Record<number,number>)[4])
-        await supabase.from('profiles').update({
-          coins: p.coins + earned,
-          games_played: p.games_played + 1,
-          games_won: isWin ? p.games_won + 1 : p.games_won,
-        }).eq('id', p.id)
-        await supabase.from('game_players').update({
-          coins_earned: earned, placement: isWin ? 1 : i + 2,
         }).eq('game_id', gameId).eq('profile_id', p.id)
       }
     }
