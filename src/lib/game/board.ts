@@ -17,15 +17,24 @@ export function createBoard(): Board {
 export function dropPiece(
   board: Board,
   col: number,
-  symbol: PlayerSymbol
+  symbol: PlayerSymbol,
+  reverse = false,
 ): MoveResult {
   if (col < 0 || col >= BOARD_SIZE) {
     return { newBoard: board, rowLanded: -1, causedRotation: false, isValid: false }
   }
 
   let rowLanded = -1
-  for (let r = BOARD_SIZE - 1; r >= 0; r--) {
-    if (board[r][col] === null) { rowLanded = r; break }
+  if (reverse) {
+    // Reverse drop: piece enters from bottom, lands at topmost empty row
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      if (board[r][col] === null) { rowLanded = r; break }
+    }
+  } else {
+    // Normal drop: piece enters from top, falls to bottommost empty row
+    for (let r = BOARD_SIZE - 1; r >= 0; r--) {
+      if (board[r][col] === null) { rowLanded = r; break }
+    }
   }
 
   if (rowLanded === -1) {
@@ -109,6 +118,14 @@ export function getValidColumns(board: Board): number[] {
 /** Get the row where a piece would land if dropped in this column (-1 if full) */
 export function getLandingRow(board: Board, col: number): number {
   for (let r = BOARD_SIZE - 1; r >= 0; r--) {
+    if (board[r][col] === null) return r
+  }
+  return -1
+}
+
+/** Get the row where a reverse-drop piece lands (topmost empty row, -1 if full) */
+export function getTopLandingRow(board: Board, col: number): number {
+  for (let r = 0; r < BOARD_SIZE; r++) {
     if (board[r][col] === null) return r
   }
   return -1
