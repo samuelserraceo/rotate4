@@ -41,27 +41,10 @@ export function dropPiece(
   return { newBoard, rowLanded, causedRotation, isValid: true }
 }
 
-/**
- * After rotation, pieces must fall due to gravity.
- * Collect all non-null cells in each column and stack them at the bottom.
- */
-function applyGravity(board: Board): Board {
-  const N = BOARD_SIZE
-  const result: Board = Array.from({ length: N }, () => Array<Cell>(N).fill(null))
-  for (let c = 0; c < N; c++) {
-    const pieces: Cell[] = []
-    for (let r = 0; r < N; r++) {
-      if (board[r][c] !== null) pieces.push(board[r][c])
-    }
-    for (let i = 0; i < pieces.length; i++) {
-      result[N - pieces.length + i][c] = pieces[i]
-    }
-  }
-  return result
-}
 
 /**
- * Rotate 90° clockwise, then apply gravity so pieces fall to the bottom.
+ * Rotate 90° clockwise. Pieces STICK to whatever surface they're on —
+ * no gravity is applied. Pieces only fall when newly dropped (via dropPiece).
  * Formula: rotated[j][N-1-i] = original[i][j]
  */
 export function rotateBoard(board: Board): Board {
@@ -72,7 +55,7 @@ export function rotateBoard(board: Board): Board {
       rotated[j][N - 1 - i] = board[i][j]
     }
   }
-  return applyGravity(rotated)
+  return rotated
 }
 
 /** Check if a given symbol has 4 in a row anywhere on the board. */
@@ -111,12 +94,16 @@ export function checkWin(board: Board, symbol: PlayerSymbol): WinResult {
   return { hasWon: false }
 }
 
+/** Board is full only when every column has no empty cells at all */
 export function isBoardFull(board: Board): boolean {
-  return board[0].every(cell => cell !== null)
+  for (let c = 0; c < BOARD_SIZE; c++) {
+    if (getLandingRow(board, c) !== -1) return false
+  }
+  return true
 }
 
 export function getValidColumns(board: Board): number[] {
-  return Array.from({ length: BOARD_SIZE }, (_, c) => c).filter(c => board[0][c] === null)
+  return Array.from({ length: BOARD_SIZE }, (_, c) => c).filter(c => getLandingRow(board, c) !== -1)
 }
 
 /** Get the row where a piece would land if dropped in this column (-1 if full) */
