@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react'
 import type { Board, PlayerSymbol, GamePlayer, Profile } from '@/types'
 import { SYMBOL_COLORS } from '@/types'
-import { BOARD_SIZE, getLandingRow, getTopLandingRow } from '@/lib/game/board'
+import { BOARD_SIZE, getLandingRow } from '@/lib/game/board'
 
 interface BoardProps {
   board: Board
@@ -12,10 +12,9 @@ interface BoardProps {
   mySymbol: PlayerSymbol | null
   winningCells: [number, number][] | null
   isRotating: boolean
-  onColumnClick: (col: number, reverse: boolean) => void
+  onColumnClick: (col: number) => void
   disabled: boolean
   recentDrop?: { row: number; col: number } | null
-  playerColors?: Partial<Record<PlayerSymbol, { color: string; glow: string }>>
 }
 
 export default function GameBoard({
@@ -28,26 +27,17 @@ export default function GameBoard({
   onColumnClick,
   disabled,
   recentDrop,
-  playerColors,
 }: BoardProps) {
-  // Merge skin overrides with defaults
-  const getColor = (sym: PlayerSymbol) => playerColors?.[sym] ?? SYMBOL_COLORS[sym]
-  const colorMap: Record<PlayerSymbol, { color: string; glow: string }> = {
-    X: getColor('X'), O: getColor('O'), W: getColor('W'), M: getColor('M'),
-  }
-
-  const [hovered, setHovered] = useState<{ col: number; rev: boolean } | null>(null)
+  const [hoveredCol, setHoveredCol] = useState<number | null>(null)
   const isMyTurn = mySymbol !== null && currentSymbol === mySymbol
   const canClick = isMyTurn && !disabled && !isRotating
-  // Ghost landing row depends on drop direction
-  const ghostRow = hovered !== null
-    ? (hovered.rev ? getTopLandingRow(board, hovered.col) : getLandingRow(board, hovered.col))
-    : -1
 
-  const handleCellClick = useCallback((col: number, row: number) => {
+  // Compute landing row for ghost piece
+  const landingRow = hoveredCol !== null ? getLandingRow(board, hoveredCol) : -1
+
+  const handleCellClick = useCallback((col: number) => {
     if (!canClick) return
-    const rev = row < Math.floor(BOARD_SIZE / 2)
-    onColumnClick(col, rev)
+    onColumnClick(col)
   }, [canClick, onColumnClick])
 
   const isWinningCell = (row: number, col: number) =>
@@ -60,83 +50,58 @@ export default function GameBoard({
         style={{ touchAction: 'none' }}
       >
         {/* Player labels in corners */}
-        <PlayerCorners players={players} currentSymbol={currentSymbol} mySymbol={mySymbol} colorMap={colorMap} />
+        <PlayerCorners players={players} currentSymbol={currentSymbol} mySymbol={mySymbol} />
 
-        {/* Top arrows — normal drop (piece falls DOWN to bottom of stack) */}
+        {/* Drop arrow indicator above hovered column */}
         {canClick && (
           <div className="flex mb-1">
-            {Array.from({ length: BOARD_SIZE }, (_, c) => {
-              const lr = getLandingRow(board, c)
-              return (
-                <div key={c} className="flex-1 flex justify-center cursor-pointer"
-                  style={{ minWidth: 0 }}
-                  onMouseEnter={() => setHovered({ col: c, rev: false })}
-                  onMouseLeave={() => setHovered(null)}
-                  onClick={() => { if (canClick && lr !== -1) onColumnClick(c, false) }}
-                >
-                  <div className="text-sm transition-opacity"
-                    style={{
-                      color: mySymbol ? colorMap[mySymbol].color : '#00f5ff',
-                      opacity: hovered?.col === c && !hovered.rev ? 1 : 0.25,
-                    }}
-                  >▼</div>
-                </div>
-              )
-            })}
+            {Array.from({ length: BOARD_SIZE }, (_, c) => (
+              <div key={c} className="flex-1 flex justify-center" style={{ minWidth: 0 }}>
+                {hoveredCol === c && landingRow !== -1 && (
+                  <div
+                    className="text-sm animate-bounce"
+                    style={{ color: mySymbol ? SYMBOL_COLORS[mySymbol].color : '#00f5ff' }}
+                  >
+                    â¼
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
+
         {/* Grid */}
-        <div className="rounded-xl overflow-hidden border border-neon-cyan/10"
+        <div
+          className="rounded-xl overflow-hidden border border-neon-cyan/10"
           style={{ background: 'rgba(13,13,27,0.9)' }}
         >
           {board.map((row, rIdx) => (
             <div key={rIdx} className="flex">
               {row.map((cell, cIdx) => {
                 const winning = isWinningCell(rIdx, cIdx)
-                const isGhost = hovered?.col === cIdx && rIdx === ghostRow && !cell && canClick
+                const isLandingRow = hoveredCol === cIdx && rIdx === landingRow && !cell && canClick
                 const isRecentDrop = recentDrop?.row === rIdx && recentDrop?.col === cIdx
+
                 return (
                   <BoardCell
                     key={cIdx}
                     cell={cell}
                     isWinning={winning}
-                    isLandingRow={isGhost}
+                    isLandingRow={isLandingRow}
                     isRecentDrop={isRecentDrop}
-                    canClick={canClick && ghostRow !== -1}
+                    canClick={canClick && landingRow !== -1}
                     mySymbol={mySymbol}
-                    onClick={() => handleCellClick(cIdx, rIdx)}
-                    onMouseEnter={() => canClick && setHovered({ col: cIdx, rev: rIdx < Math.floor(BOARD_SIZE / 2) })}
-                    onMouseLeave={() => setHovered(null)}
-                    onTouchStart={() => canClick && setHovered({ col: cIdx, rev: rIdx < Math.floor(BOARD_SIZE / 2) })}
+                    onClick={() => handleCellClick(cIdx)}
+                    onMouseEnter={() => canClick && setHoveredCol(cIdx)}
+                    onMouseLeave={() => setHoveredCol(null)}
+                    onTouchStart={() => canClick && setHoveredCol(cIdx)}
                   />
                 )
               })}
             </div>
           ))}
         </div>
-        {/* Bottom arrows — reverse drop (piece rises UP to top of stack) */}
-        {canClick && (
-          <div className="flex mt-1">
-            {Array.from({ length: BOARD_SIZE }, (_, c) => {
-              const tlr = getTopLandingRow(board, c)
-              return (
-                <div key={c} className="flex-1 flex justify-center cursor-pointer"
-                  style={{ minWidth: 0 }}
-                  onMouseEnter={() => setHovered({ col: c, rev: true })}
-                  onMouseLeave={() => setHovered(null)}
-                  onClick={() => { if (canClick && tlr !== -1) onColumnClick(c, true) }}
-                >
-                  <div className="text-sm transition-opacity"
-                    style={{
-                      color: mySymbol ? colorMap[mySymbol].color : '#00f5ff',
-                      opacity: hovered?.col === c && hovered.rev ? 1 : 0.25,
-                    }}
-                  >▲</div>
-                </div>
-              )
-            })}
-          </div>
-        )}
+
         {/* Rotation overlay flash */}
         {isRotating && (
           <div className="absolute inset-0 rounded-xl bg-neon-cyan/8 pointer-events-none border border-neon-cyan/40" />
@@ -154,7 +119,7 @@ export default function GameBoard({
   )
 }
 
-// ─── Board Cell ─────────────────────────────────────────────────────────────
+// âââ Board Cell âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 interface CellProps {
   cell: PlayerSymbol | null
@@ -163,7 +128,6 @@ interface CellProps {
   isRecentDrop: boolean
   canClick: boolean
   mySymbol: PlayerSymbol | null
-  colorMap: Record<PlayerSymbol, { color: string; glow: string }>
   onClick: () => void
   onMouseEnter: () => void
   onMouseLeave: () => void
@@ -174,8 +138,8 @@ function BoardCell({
   cell, isWinning, isLandingRow, isRecentDrop, canClick, mySymbol,
   onClick, onMouseEnter, onMouseLeave, onTouchStart,
 }: CellProps) {
-  const color = cell ? colorMap[cell].color : undefined
-  const glow  = cell ? colorMap[cell].glow  : undefined
+  const color = cell ? SYMBOL_COLORS[cell].color : undefined
+  const glow  = cell ? SYMBOL_COLORS[cell].glow  : undefined
 
   return (
     <div
@@ -197,13 +161,13 @@ function BoardCell({
       )}
       {/* Ghost piece only at landing row */}
       {!cell && isLandingRow && mySymbol && (
-        <GhostPiece symbol={mySymbol} color={colorMap[mySymbol].color} />
+        <GhostPiece symbol={mySymbol} color={SYMBOL_COLORS[mySymbol].color} />
       )}
     </div>
   )
 }
 
-// ─── Pieces ──────────────────────────────────────────────────────────────────
+// âââ Pieces ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 function GamePiece({ symbol, color, glow, winning, recentDrop }: {
   symbol: PlayerSymbol; color: string; glow: string; winning: boolean; recentDrop: boolean
@@ -245,13 +209,12 @@ function GhostPiece({ symbol, color }: { symbol: PlayerSymbol; color: string }) 
   )
 }
 
-// ─── Player Corners ──────────────────────────────────────────────────────────
+// âââ Player Corners ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
-function PlayerCorners({ players, currentSymbol, mySymbol, colorMap }: {
+function PlayerCorners({ players, currentSymbol, mySymbol }: {
   players: (GamePlayer & { profiles?: Profile })[]
   currentSymbol: PlayerSymbol | null
   mySymbol: PlayerSymbol | null
-  colorMap: Record<PlayerSymbol, { color: string; glow: string }>
 }) {
   const corners: Record<PlayerSymbol, { top?: string; bottom?: string; left?: string; right?: string }> = {
     X: { bottom: '-32px', left: '0' },
@@ -264,7 +227,7 @@ function PlayerCorners({ players, currentSymbol, mySymbol, colorMap }: {
     <>
       {players.map(p => {
         const sym = p.symbol as PlayerSymbol
-        const color = colorMap[sym].color
+        const color = SYMBOL_COLORS[sym].color
         const isActive = currentSymbol === sym
         const isMe = mySymbol === sym
         const corner = corners[sym]
@@ -282,7 +245,7 @@ function PlayerCorners({ players, currentSymbol, mySymbol, colorMap }: {
               {sym}
             </div>
             <span style={{ color: isActive ? color : '#64748b' }} className="max-w-[80px] truncate">
-              {p.profiles?.username ?? '…'}
+              {p.profiles?.username ?? 'â¦'}
               {isMe && <span className="ml-0.5 opacity-60">(you)</span>}
             </span>
             {isActive && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: color }} />}
@@ -293,19 +256,18 @@ function PlayerCorners({ players, currentSymbol, mySymbol, colorMap }: {
   )
 }
 
-// ─── Turn Indicator ──────────────────────────────────────────────────────────
+// âââ Turn Indicator ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
-function TurnIndicator({ currentSymbol, mySymbol, players, disabled, isRotating, colorMap }: {
+function TurnIndicator({ currentSymbol, mySymbol, players, disabled, isRotating }: {
   currentSymbol: PlayerSymbol | null
   mySymbol: PlayerSymbol | null
   players: (GamePlayer & { profiles?: Profile })[]
   disabled: boolean
   isRotating: boolean
-  colorMap: Record<PlayerSymbol, { color: string; glow: string }>
 }) {
   if (!currentSymbol) return null
 
-  const color = colorMap[currentSymbol].color
+  const color = SYMBOL_COLORS[currentSymbol].color
   const player = players.find(p => p.symbol === currentSymbol)
   const isMe = currentSymbol === mySymbol
 
@@ -313,13 +275,15 @@ function TurnIndicator({ currentSymbol, mySymbol, players, disabled, isRotating,
     <div className="mt-8 text-center">
       {isRotating ? (
         <p className="text-neon-amber text-glow-amber font-semibold text-sm animate-pulse">
-          ↻ Board Rotating…
+          â» Board Rotatingâ¦
         </p>
-      ) : disabled ? null : (
+      ) : disabled ? (
+        <p className="text-slate-500 text-sm">Game over</p>
+      ) : (
         <div>
           <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">Current Turn</p>
           <p className="font-bold text-lg" style={{ color, textShadow: `0 0 10px ${color}66` }}>
-            {isMe ? '⚡ Your Turn!' : `${player?.profiles?.username ?? currentSymbol}`}
+            {isMe ? 'â¡ Your Turn!' : `${player?.profiles?.username ?? currentSymbol}`}
           </p>
         </div>
       )}
