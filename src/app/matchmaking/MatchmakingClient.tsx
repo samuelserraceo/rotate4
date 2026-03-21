@@ -55,25 +55,22 @@ export default function MatchmakingClient() {
   }, [])
 
   const checkForMatch = async (userId: string) => {
-    // Only look for games created AFTER we joined the queue
-    const { data: myGamePlayer } = await supabase
-      .from('game_players')
-      .select('game_id, games(status, mode, created_at)')
-      .eq('profile_id', userId)
-      .order('id', { ascending: false })
+    // Look for active games created AFTER we joined the queue (use inner join, not UUID ordering)
+    const { data: activeGame } = await supabase
+      .from('games')
+      .select('id, status, created_at, game_players!inner(profile_id)')
+      .eq('status', 'active')
+      .eq('game_players.profile_id', userId)
+      .gte('created_at', queueEnteredAt.current)
+      .order('created_at', { ascending: false })
       .limit(1)
       .single()
 
-    const gameData = myGamePlayer?.games as { status: string; mode: string; created_at: string } | undefined
-    if (
-      myGamePlayer &&
-      gameData?.status === 'active' &&
-      gameData?.created_at >= queueEnteredAt.current
-    ) {
+    if (activeGame) {
       if (matchCheckRef.current) clearInterval(matchCheckRef.current)
       await supabase.from('matchmaking_queue').delete().eq('profile_id', userId)
       if (mounted.current) setStatus('found')
-      setTimeout(() => router.push(`/game/${myGamePlayer.game_id}`), 800)
+      setTimeout(() => router.push(`/game/${activeGame.id}`), 800)
       return
     }
 
