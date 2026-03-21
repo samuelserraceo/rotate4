@@ -8,8 +8,7 @@ import type { Profile } from '@/types'
 export default function MatchmakingClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const mode      = searchParams.get('mode') as '1v1' | '4p' ?? '1v1'
-  const gameType  = searchParams.get('type') as 'casual' | 'competitive' ?? 'casual'
+  const mode      = (searchParams.get('mode') as '1v1' | '4p') ?? '1v1'
   const supabase  = createClient()
 
   const [profile, setProfile]     = useState<Profile | null>(null)
@@ -19,7 +18,6 @@ export default function MatchmakingClient() {
   const matchCheckRef             = useRef<NodeJS.Timeout | null>(null)
   const mounted                   = useRef(true)
   const waitTimeRef               = useRef(0)
-  // Track when we entered the queue so we never pick up old games
   const queueEnteredAt            = useRef(new Date().toISOString())
 
   const maxPlayers = mode === '4p' ? 4 : 2
@@ -35,7 +33,7 @@ export default function MatchmakingClient() {
 
       queueEnteredAt.current = new Date().toISOString()
       await supabase.from('matchmaking_queue').upsert({
-        profile_id: user.id, mode, game_type: gameType,
+        profile_id: user.id, mode, game_type: 'competitive',
         elo: mode === '1v1' ? (p?.elo_1v1 ?? p?.elo ?? 0) : (p?.elo_4p ?? p?.elo ?? 0),
       })
 
@@ -56,7 +54,7 @@ export default function MatchmakingClient() {
   }, [])
 
   const checkForMatch = async (userId: string) => {
-    // Only look for games created AFTER we joined the queue (prevents re-entering old games)
+    // Only look for games created AFTER we joined the queue
     const { data: myGamePlayer } = await supabase
       .from('game_players')
       .select('game_id, games(status, mode, created_at)')
@@ -78,12 +76,12 @@ export default function MatchmakingClient() {
       return
     }
 
-    const fullMode = `${gameType}_${mode}` as const
+    const fullMode = `competitive_${mode}` as const
     const { data: allQueue } = await supabase
       .from('matchmaking_queue')
       .select('*, profiles(id,elo,elo_1v1,elo_4p)')
       .eq('mode', mode)
-      .eq('game_type', gameType)
+      .eq('game_type', 'competitive')
       .order('joined_at')
       .limit(50)
 
@@ -92,15 +90,13 @@ export default function MatchmakingClient() {
     const me = allQueue.find(q => q.profile_id === userId)
     if (!me) return
 
-    let queue = allQueue
-    if (gameType === 'competitive') {
-      const myElo = me.elo ?? 0
-      const eloRange = 200 + Math.floor(waitTimeRef.current / 30) * 100
-      queue = allQueue.filter(q => {
-        const qElo = q.elo ?? 0
-        return Math.abs(qElo - myElo) <= eloRange
-      })
-    }
+    // ELO range matching — widens over time
+    const myElo = me.elo ?? 0
+    const eloRange = 200 + Math.floor(waitTimeRef.current / 30) * 100
+    let queue = allQueue.filter(q => {
+      const qElo = q.elo ?? 0
+      return Math.abs(qElo - myElo) <= eloRange
+    })
 
     if (queue.length < maxPlayers) return
     if (!queue.find(q => q.profile_id === userId)) return
@@ -108,6 +104,7 @@ export default function MatchmakingClient() {
     const matchedQueue = queue.slice(0, maxPlayers)
     if (!matchedQueue.find(q => q.profile_id === userId)) return
 
+    // Only the first person in the matched set creates the game
     if (matchedQueue[0].profile_id !== userId) return
 
     if (mounted.current) setStatus('found')
@@ -171,7 +168,7 @@ export default function MatchmakingClient() {
 
           <div className="flex gap-2 mb-5">
             <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">
-              {gameType === 'competitive' ? '⚔️ Ranked' : '🎮 Casual'}
+              ⚔️ Ranked
             </span>
             <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">
               {mode === '4p' ? '4-Player' : '1v1'}
@@ -200,7 +197,7 @@ export default function MatchmakingClient() {
 
           <div className="space-y-1 mb-6 text-center">
             <p className="text-slate-500 text-sm font-mono">{formatTime(waitTime)}</p>
-            {gameType === 'competitive' && profile && (
+            {profile && (
               <p className="text-slate-600 text-xs">
                 ELO range: {myElo - eloRange} – {myElo + eloRange}
                 <span className="text-slate-700 ml-1">(widens every 30s)</span>
