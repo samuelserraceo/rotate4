@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import GameBoard from '@/components/game/Board'
 import WinModal from '@/components/game/WinModal'
-import type { Game, GamePlayer, Profile, PlayerSymbol, Board, Skin } from '@/types'
+import type { Game, GamePlayer, Profile, PlayerSymbol, Board } from '@/types'
 import { COIN_REWARDS } from '@/types'
 import { dropPiece, rotateBoard, checkWin, isBoardFull, createBoard } from '@/lib/game/board'
 import { calculate1v1Elo } from '@/lib/game/elo'
@@ -38,10 +38,9 @@ export default function GamePage() {
   const [error, setError]                 = useState<string | null>(null)
   const [rotationCount, setRotationCount] = useState(0)
   const [lastDrop, setLastDrop]           = useState<{ row: number; col: number } | null>(null)
-  const [playerColors, setPlayerColors] = useState<Partial<Record<PlayerSymbol, { color: string; glow: string }>>>({})
   const [turnTimer, setTurnTimer]         = useState(30)
 
-  // Stable refs — never stale
+  // Stable refs â never stale
   const processingMove    = useRef(false)
   const mountedRef        = useRef(true)
   const playersRef        = useRef<PlayerWithProfile[]>([])
@@ -60,30 +59,7 @@ export default function GamePage() {
   useEffect(() => { gameRef.current = game }, [game])
   useEffect(() => { currentTurnRef.current = currentTurn }, [currentTurn])
 
-
-
-  // ── Load skin colors for players ────────────────────────────────────────────
-  const loadSkinColors = useCallback(async (gamePlayers: PlayerWithProfile[]) => {
-    const skinIds = gamePlayers
-      .map(p => p.profiles?.equipped_skin_id)
-      .filter((id): id is string => !!id)
-    if (skinIds.length === 0) return
-    const { data: skins } = await supabase
-      .from('skins').select('*').in('id', skinIds)
-    if (!skins || skins.length === 0) return
-    const skinMap = Object.fromEntries(skins.map((s: Skin) => [s.id, s]))
-    const colors: Partial<Record<PlayerSymbol, { color: string; glow: string }>> = {}
-    for (const p of gamePlayers) {
-      const skinId = p.profiles?.equipped_skin_id
-      if (skinId && skinMap[skinId]) {
-        const skin = skinMap[skinId]
-        colors[p.symbol as PlayerSymbol] = { color: skin.color, glow: skin.glow_color }
-      }
-    }
-    if (mountedRef.current) setPlayerColors(colors)
-  }, [supabase])
-
-  // ── 30-second turn timer ────────────────────────────────────────────────────
+  // ââ 30-second turn timer ââââââââââââââââââââââââââââââââââââââââââââââââââââ
   useEffect(() => {
     if (!game || game.status !== 'active' || isRotating) return
 
@@ -118,7 +94,7 @@ export default function GamePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTurn, game?.status, isRotating])
 
-  // ── Init + subscribe ────────────────────────────────────────────────────────
+  // ââ Init + subscribe ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   useEffect(() => {
     mountedRef.current = true
 
@@ -156,7 +132,6 @@ export default function GamePage() {
         playersRef.current = playersData as PlayerWithProfile[]
         const me = playersData.find((p: GamePlayer) => p.profile_id === user.id)
         if (me) setMySymbol(me.symbol as PlayerSymbol)
-        loadSkinColors(playersData as PlayerWithProfile[])
       }
 
       if (mountedRef.current) setLoading(false)
@@ -179,12 +154,11 @@ export default function GamePage() {
         const newRotCount = g.rotation_count ?? 0
 
         if (newRotCount > rotationCountRef.current) {
-          // Rotation happened — CSS spin, then swap to rotated board
+          // Rotation happened â animate on OLD board, then switch to new board
           rotationCountRef.current = newRotCount
           setRotationCount(newRotCount)
           pendingBoardRef.current = g.board_state
           setIsRotating(true)
-
           setTimeout(() => {
             if (!mountedRef.current) return
             setIsRotating(false)
@@ -210,7 +184,6 @@ export default function GamePage() {
         if (mountedRef.current && pd) {
           setPlayers(pd as PlayerWithProfile[])
           playersRef.current = pd as PlayerWithProfile[]
-          loadSkinColors(pd as PlayerWithProfile[])
         }
       })
       .subscribe()
@@ -222,7 +195,7 @@ export default function GamePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId])
 
-  // ── Handle game end ─────────────────────────────────────────────────────────
+  // ââ Handle game end âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   const handleGameEnd = useCallback(async (finishedGame: Game) => {
     if (winStateRef.current) return
     winStateRef.current = true
@@ -272,8 +245,8 @@ export default function GamePage() {
     }
   }, [gameId, supabase])
 
-  // ── Drop a piece ────────────────────────────────────────────────────────────
-  const handleColumnClick = useCallback(async (col: number, reverse = false) => {
+  // ââ Drop a piece ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  const handleColumnClick = useCallback(async (col: number) => {
     const myProfile = myProfileRef.current
     const game = gameRef.current
     const currentPlayers = playersRef.current
@@ -284,10 +257,10 @@ export default function GamePage() {
 
     processingMove.current = true
 
-    const result = dropPiece(board, col, mySymbol, reverse)
+    const result = dropPiece(board, col, mySymbol)
     if (!result.isValid) { processingMove.current = false; return }
 
-    // Immediate local update — show piece before DB round-trip
+    // Immediate local update â show piece before DB round-trip
     setBoard(result.newBoard)
     setLastDrop({ row: result.rowLanded, col })
 
@@ -304,25 +277,10 @@ export default function GamePage() {
       return
     }
 
-    // Apply rotation with local animation
+    // Apply rotation (subscription will handle the animation)
     if (causedRotation) {
       newRotationCount += 1
-      finalBoard = rotateBoard(result.newBoard)
-
-      // Animate: CSS spin, then swap to rotated board (pieces stick to walls)
-      setIsRotating(true)
-      rotationCountRef.current = newRotationCount
-      setRotationCount(newRotationCount)
-
-      await new Promise<void>((resolve) => {
-        setTimeout(() => {
-          if (!mountedRef.current) { resolve(); return }
-          setIsRotating(false)
-          setBoard(finalBoard)
-          resolve()
-        }, 450)
-      })
-
+      finalBoard = rotateBoard(finalBoard)
       const winAfter = checkWin(finalBoard, mySymbol)
       if (winAfter.hasWon) {
         setWinningCells(winAfter.winningCells ?? null)
@@ -354,7 +312,7 @@ export default function GamePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board, mySymbol, gameId, supabase])
 
-  // ── Finalize game (win/draw) ────────────────────────────────────────────────
+  // ââ Finalize game (win/draw) ââââââââââââââââââââââââââââââââââââââââââââââââ
   const finalizeGame = useCallback(async (
     finalBoard: Board,
     winnerId: string,
@@ -375,16 +333,17 @@ export default function GamePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId, supabase])
 
-  // ── Distribute rewards ──────────────────────────────────────────────────────
+  // ââ Distribute rewards ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   const distributeRewards = useCallback(async (
     winnerId: string | null,
   ) => {
     const game = gameRef.current
     if (!game) return
 
-    // Hosted games — no rewards at all
-    if (game.host_id || game.mode.startsWith('hosted')) return
+    // Hosted games â no rewards
+    if (game.host_id) return
 
+    const isComp = game.mode.startsWith('competitive')
     const is1v1  = game.mode.endsWith('1v1')
     const currentPlayers = playersRef.current
 
@@ -394,8 +353,9 @@ export default function GamePage() {
 
     const profileMap = Object.fromEntries(freshProfiles.map((p: Profile) => [p.id, p]))
 
-    if (is1v1 && winnerId && currentPlayers.length === 2) {
-      // Competitive 1v1 — ELO + coins
+    const applyMultiplier = (v: number) => Math.round(v * 1.0)
+
+    if (isComp && is1v1 && winnerId && currentPlayers.length === 2) {
       const winnerPlayer = currentPlayers.find(p => p.profile_id === winnerId)!
       const loserPlayer  = currentPlayers.find(p => p.profile_id !== winnerId)!
       const wP = profileMap[winnerPlayer.profile_id]
@@ -405,41 +365,39 @@ export default function GamePage() {
       const lElo = lP.elo_1v1 ?? lP.elo ?? 0
       const [newWEloRaw, newLEloRaw, wChange, lChange] = calculate1v1Elo(wElo, lElo, wP.games_played, lP.games_played)
       const newWElo = Math.max(0, newWEloRaw)
-      const newLElo = lElo > 200 ? Math.max(0, newLEloRaw) : lElo
+      const newLElo = Math.max(0, newLEloRaw)
       const coins = COIN_REWARDS.competitive_1v1
 
       await supabase.from('profiles').update({
-        elo_1v1: newWElo, coins: wP.coins + coins.win,
+        elo_1v1: newWElo, coins: wP.coins + applyMultiplier(coins.win),
         games_played: wP.games_played + 1, games_won: wP.games_won + 1,
       }).eq('id', wP.id)
       await supabase.from('game_players').update({
-        elo_before: wElo, elo_after: newWElo, elo_change: wChange,
-        coins_earned: coins.win, placement: 1,
+        elo_before: wElo, elo_after: newWElo, elo_change: applyMultiplier(wChange),
+        coins_earned: applyMultiplier(coins.win), placement: 1,
       }).eq('game_id', gameId).eq('profile_id', wP.id)
 
       await supabase.from('profiles').update({
-        elo_1v1: newLElo, coins: lP.coins + coins.loss,
+        elo_1v1: newLElo, coins: lP.coins + applyMultiplier(coins.loss),
         games_played: lP.games_played + 1,
       }).eq('id', lP.id)
       await supabase.from('game_players').update({
-        elo_before: lElo, elo_after: newLElo, elo_change: lChange,
-        coins_earned: coins.loss, placement: 2,
+        elo_before: lElo, elo_after: newLElo, elo_change: applyMultiplier(lChange),
+        coins_earned: applyMultiplier(coins.loss), placement: 2,
       }).eq('game_id', gameId).eq('profile_id', lP.id)
 
-    } else if (!is1v1 && winnerId) {
-      // Competitive 4P — ELO + coins
+    } else if (isComp && !is1v1 && winnerId) {
       const coins = COIN_REWARDS.competitive_4p
       for (let i = 0; i < currentPlayers.length; i++) {
         const pl = currentPlayers[i]
         const p = profileMap[pl.profile_id]
-        if (!p) continue
         const pElo = p.elo_4p ?? p.elo ?? 0
         const isWin = pl.profile_id === winnerId
         const placement = isWin ? 1 : i + 1
         const coinKey = placement as 1 | 2 | 3 | 4
-        const earned = coins[coinKey] ?? coins[4]
-        const eloChange = isWin ? 150 : -115
-        const newElo = (!isWin && pElo <= 200) ? pElo : Math.max(0, pElo + eloChange)
+        const earned = applyMultiplier(coins[coinKey] ?? coins[4])
+        const eloChange = isWin ? 32 : -8
+        const newElo = Math.max(0, pElo + eloChange)
         await supabase.from('profiles').update({
           elo_4p: newElo, coins: p.coins + earned,
           games_played: p.games_played + 1, games_won: isWin ? p.games_won + 1 : p.games_won,
@@ -449,41 +407,30 @@ export default function GamePage() {
           coins_earned: earned, placement,
         }).eq('game_id', gameId).eq('profile_id', p.id)
       }
+    } else {
+      // Casual (1v1 or 4p)
+      const coins = is1v1 ? COIN_REWARDS.casual_1v1 : COIN_REWARDS.casual_4p
+      for (let i = 0; i < currentPlayers.length; i++) {
+        const pl = currentPlayers[i]
+        const isWin = pl.profile_id === winnerId
+        const p = profileMap[pl.profile_id]
+        const earned = is1v1
+          ? applyMultiplier(isWin ? (coins as {win:number;loss:number}).win : (coins as {win:number;loss:number}).loss)
+          : applyMultiplier((coins as Record<number,number>)[isWin ? 1 : i + 1] ?? (coins as Record<number,number>)[4])
+        await supabase.from('profiles').update({
+          coins: p.coins + earned,
+          games_played: p.games_played + 1,
+          games_won: isWin ? p.games_won + 1 : p.games_won,
+        }).eq('id', p.id)
+        await supabase.from('game_players').update({
+          coins_earned: earned, placement: isWin ? 1 : i + 2,
+        }).eq('game_id', gameId).eq('profile_id', p.id)
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId, supabase])
 
-  // ── Start hosted game (host only) ───────────────────────────────────────
-  const startGame = async () => {
-    await supabase.from('games').update({
-      status: 'active',
-      board_state: createBoard(),
-    }).eq('id', gameId)
-  }
-
-  // ── Leave game (forfeit) ───────────────────────────────────────────────────
-  const leaveGame = useCallback(async () => {
-    const game = gameRef.current
-    const myProf = myProfileRef.current
-    const currentPlayers = playersRef.current
-    // Competitive game in progress — forfeit: opponent wins
-    if (game && game.status === 'active' && myProf &&
-        !game.mode.startsWith('hosted') && game.host_id == null) {
-      const opponent = currentPlayers.find(p => p.profile_id !== myProf.id)
-      if (opponent) {
-        await distributeRewards(opponent.profile_id)
-        await supabase.from('games').update({
-          status: 'abandoned',
-          winner_id: opponent.profile_id,
-          completed_at: new Date().toISOString(),
-        }).eq('id', gameId)
-      }
-    }
-    router.push('/')
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameId, supabase, router])
-
-  // ── Cancel hosted game ──────────────────────────────────────────────────────
+  // ââ Cancel hosted game ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   const cancelGame = async () => {
     const myProfile = myProfileRef.current
     const game = gameRef.current
@@ -494,7 +441,7 @@ export default function GamePage() {
     router.push('/')
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ââ Render ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   if (loading) return <LoadingScreen />
   if (error)   return <ErrorScreen message={error} />
 
@@ -506,12 +453,10 @@ export default function GamePage() {
   // Waiting room
   if (game?.status === 'waiting') {
     const modeLabel = game.max_players === 4 ? '4-Player' : '1v1'
-    const amHost = players[0]?.profile_id === myProfile?.id
-    const canStart = players.length >= 2
     return (
       <div className="min-h-screen flex flex-col">
         <header className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-          <button onClick={cancelGame} className="btn-ghost text-sm">← Lobby</button>
+          <button onClick={cancelGame} className="btn-ghost text-sm">â Lobby</button>
           <div className="text-center">
             <span className="text-neon-cyan text-glow-cyan font-bold text-lg">ROTATE</span>
             <span className="text-neon-purple text-glow-purple font-bold text-lg">4</span>
@@ -522,12 +467,12 @@ export default function GamePage() {
         <div className="flex-1 flex flex-col items-center justify-center px-4">
           <div className="card w-full max-w-sm">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-base font-bold text-white">Hosting — waiting for players…</h2>
+              <h2 className="text-base font-bold text-white">Hosting â waiting for playersâ¦</h2>
               <div className="w-2.5 h-2.5 rounded-full bg-neon-cyan animate-pulse" />
             </div>
 
             <div className="flex gap-2 mb-5">
-              <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">🏠 Private</span>
+              <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">ð  Private</span>
               <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">{modeLabel}</span>
             </div>
 
@@ -543,7 +488,7 @@ export default function GamePage() {
                       {filled ? ((p.profiles as Profile | undefined)?.username?.[0]?.toUpperCase() ?? '?') : '?'}
                     </span>
                     <span className="text-xs" style={{ color: filled ? '#00f5ff60' : '#1e293b' }}>
-                      {filled ? (isMe ? 'You' : ((p.profiles as Profile | undefined)?.username ?? '···')) : '···'}
+                      {filled ? (isMe ? 'You' : ((p.profiles as Profile | undefined)?.username ?? 'Â·Â·Â·')) : 'Â·Â·Â·'}
                     </span>
                   </div>
                 )
@@ -565,14 +510,8 @@ export default function GamePage() {
               ))}
             </div>
 
-            {amHost && canStart && (
-              <button onClick={startGame} className="btn-primary w-full mb-3">
-                ▶ Start Game
-              </button>
-            )}
-
             <button onClick={cancelGame} className="btn-ghost w-full text-sm text-red-400 hover:text-red-300 border-red-500/20 hover:border-red-500/40">
-              ✕ Cancel Game
+              â Cancel Game
             </button>
           </div>
         </div>
@@ -596,7 +535,7 @@ export default function GamePage() {
         </div>
         <div className="text-xs text-slate-500 text-right">
           <p>{game?.mode.replace(/_/g, ' ').toUpperCase()}</p>
-          {rotationCount > 0 && <p className="text-neon-amber">↻ ×{rotationCount}</p>}
+          {rotationCount > 0 && <p className="text-neon-amber">â» Ã{rotationCount}</p>}
         </div>
       </header>
 
@@ -611,7 +550,6 @@ export default function GamePage() {
           onColumnClick={handleColumnClick}
           disabled={!gameActive || !isMyTurn}
           recentDrop={lastDrop}
-          playerColors={playerColors}
         />
       </div>
 
@@ -644,7 +582,7 @@ export default function GamePage() {
       {/* Leave button */}
       {gameActive && (
         <button
-          onClick={leaveGame}
+          onClick={() => router.push('/')}
           className="mt-3 text-xs text-slate-700 hover:text-slate-500 transition-colors"
         >
           Leave game
@@ -663,7 +601,7 @@ function LoadingScreen() {
         <div className="text-4xl font-black text-neon-cyan text-glow-cyan animate-pulse mb-4">
           ROTATE<span className="text-neon-purple text-glow-purple">4</span>
         </div>
-        <p className="text-slate-500 text-sm">Loading game…</p>
+        <p className="text-slate-500 text-sm">Loading gameâ¦</p>
       </div>
     </div>
   )
