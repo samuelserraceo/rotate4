@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { Profile, Friendship, GameInvite, Game } from '@/types'
+import { getRank } from '@/lib/ranks'
+import type { Profile, Friendship, GameInvite } from '@/types'
 
 export default function LobbyPage() {
   const router = useRouter()
@@ -14,8 +15,8 @@ export default function LobbyPage() {
   const [friendRequest, setFriendRequest] = useState('')
   const [frStatus, setFrStatus]     = useState<string | null>(null)
   const [activeTab, setActiveTab]   = useState<'play' | 'friends'>('play')
-  const [hostingGame, setHostingGame] = useState<{ code: string; gameId: string; maxPlayers: number } | null>(null)
   const [joiningCode, setJoiningCode] = useState('')
+  const [eloTab, setEloTab]         = useState<'1v1' | '4p'>('1v1')
   const [loading, setLoading]       = useState(true)
 
   useEffect(() => {
@@ -31,7 +32,7 @@ export default function LobbyPage() {
       // Load friends
       const { data: fs } = await supabase
         .from('friendships')
-        .select('*, requester:requester_id(id,username,elo), addressee:addressee_id(id,username,elo)')
+        .select('*, requester:requester_id(id,username,elo,elo_1v1,elo_4p), addressee:addressee_id(id,username,elo,elo_1v1,elo_4p)')
         .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
         .eq('status', 'accepted')
       if (mounted && fs) setFriends(fs.map((f: Friendship & { requester?: Profile; addressee?: Profile }) => ({
@@ -89,35 +90,8 @@ export default function LobbyPage() {
       game_id: game.id, profile_id: profile.id,
       symbol: 'X', player_index: 0,
     })
-    setHostingGame({ code, gameId: game.id, maxPlayers })
+    router.push(`/game/${game.id}`)
   }
-
-  const cancelHostedGame = async () => {
-    if (!hostingGame) return
-    await supabase.from('game_players').delete().eq('game_id', hostingGame.gameId)
-    await supabase.from('games').delete().eq('id', hostingGame.gameId)
-    setHostingGame(null)
-  }
-
-  // Watch for players joining the hosted game
-  useEffect(() => {
-    if (!hostingGame) return
-    const channel = supabase.channel(`host-watch-${hostingGame.gameId}`)
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'game_players',
-        filter: `game_id=eq.${hostingGame.gameId}`,
-      }, async () => {
-        const { data: gp } = await supabase
-          .from('game_players').select('id').eq('game_id', hostingGame.gameId)
-        if (gp && gp.length >= hostingGame.maxPlayers) {
-          await supabase.from('games').update({ status: 'active' }).eq('id', hostingGame.gameId)
-          router.push(`/game/${hostingGame.gameId}`)
-        }
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hostingGame])
 
   const joinWithCode = async () => {
     if (!profile || !joiningCode.trim()) return
@@ -154,10 +128,13 @@ export default function LobbyPage() {
 
   const enterMatchmaking = async (mode: '1v1' | '4p', type: 'casual' | 'competitive') => {
     if (!profile) return
+    const elo = mode === '1v1'
+      ? (profile.elo_1v1 ?? profile.elo ?? 1200)
+      : (profile.elo_4p  ?? profile.elo ?? 1200)
     // Remove from queue first (idempotent)
     await supabase.from('matchmaking_queue').delete().eq('profile_id', profile.id)
     await supabase.from('matchmaking_queue').insert({
-      profile_id: profile.id, mode, game_type: type, elo: profile.elo,
+      profile_id: profile.id, mode, game_type: type, elo,
     })
     router.push(`/matchmaking?mode=${mode}&type=${type}`)
   }
@@ -168,7 +145,7 @@ export default function LobbyPage() {
     const { data: target } = await supabase
       .from('profiles').select('id').eq('username', friendRequest.trim()).single()
     if (!target) { setFrStatus('User not found.'); return }
-    if (target.id === profile.id) { setFrStatus('You can\'t friend yourself.'); return }
+    if (target.id === profile.id) { setFrStatus("You can't friend yourself."); return }
     const { error } = await supabase.from('friendships').insert({
       requester_id: profile.id, addressee_id: target.id,
     })
@@ -204,8 +181,6 @@ export default function LobbyPage() {
           ROTATE<span className="text-neon-purple text-glow-purple">4</span>
         </h1>
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/leaderboard')} className="btn-ghost text-xs">🏆 Leaderboard</button>
-          <button onClick={() => router.push('/shop')} className="btn-ghost text-xs">🎨 Shop</button>
           <button onClick={handleSignOut} className="btn-ghost text-xs">Sign out</button>
         </div>
       </nav>
@@ -221,8 +196,12 @@ export default function LobbyPage() {
             </div>
             <div className="flex gap-4 text-right">
               <div>
-                <p className="text-xs text-slate-500 uppercase">ELO</p>
-                <p className="font-bold text-neon-cyan text-glow-cyan">{profile.elo}</p>
+                <p className="text-xs text-slate-500 uppercase">1v1 ELO</p>
+                <p className="font-bold text-neon-cyan text-glow-cyan">{profile.elo_1v1 ?? profile.elo}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase">4P ELO</p>
+                <p className="font-bold text-neon-purple">{profile.elo_4p ?? profile.elo}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-500 uppercase">Coins</p>
@@ -268,30 +247,8 @@ export default function LobbyPage() {
           </button>
         </div>
 
-        {/* HOSTING PANEL — shown instead of play tab when hosting */}
-        {hostingGame && (
-          <div className="card border-neon-cyan/20 text-center space-y-4 animate-fade-in">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-300">Waiting for players…</h3>
-              <div className="w-2 h-2 rounded-full bg-neon-cyan animate-pulse" />
-            </div>
-            <p className="text-xs text-slate-500">Share this code with your opponent</p>
-            <div className="bg-slate-900 rounded-xl py-4 px-6">
-              <p className="text-4xl font-black tracking-[0.3em] text-neon-cyan text-glow-cyan">
-                {hostingGame.code}
-              </p>
-            </div>
-            <p className="text-xs text-slate-600">
-              {hostingGame.maxPlayers === 2 ? '1v1' : '4-Player'} · Casual · Waiting for {hostingGame.maxPlayers - 1} more player{hostingGame.maxPlayers > 2 ? 's' : ''}
-            </p>
-            <button onClick={cancelHostedGame} className="btn-ghost w-full text-sm text-red-400 hover:text-red-300 border-red-500/20 hover:border-red-500/40">
-              ✕ Cancel &amp; Return to Lobby
-            </button>
-          </div>
-        )}
-
         {/* PLAY TAB */}
-        {!hostingGame && activeTab === 'play' && (
+        {activeTab === 'play' && (
           <div className="space-y-4 animate-fade-in">
             {/* Casual */}
             <div>
@@ -320,26 +277,104 @@ export default function LobbyPage() {
             {/* Competitive */}
             <div>
               <h3 className="text-xs text-slate-500 uppercase tracking-widest mb-2">Competitive (Ranked)</h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-2">
                 <button onClick={() => enterMatchmaking('1v1', 'competitive')}
                   className="card border-neon-cyan/10 hover:border-neon-cyan/30 transition-all text-center py-4 group">
                   <p className="text-2xl mb-1">⚔️</p>
-                  <p className="font-semibold text-slate-200 group-hover:text-neon-cyan transition-colors">1v1 Ranked</p>
-                  <p className="text-xs text-slate-500 mt-1">ELO matchmaking</p>
+                  <p className="font-semibold text-slate-200 group-hover:text-neon-cyan transition-colors text-sm">1v1</p>
+                  <p className="text-xs text-slate-500 mt-1">ELO match</p>
                 </button>
                 <button onClick={() => enterMatchmaking('4p', 'competitive')}
                   className="card border-neon-purple/10 hover:border-neon-purple/30 transition-all text-center py-4 group">
                   <p className="text-2xl mb-1">🏟️</p>
-                  <p className="font-semibold text-slate-200 group-hover:text-neon-purple transition-colors">4-Player Ranked</p>
-                  <p className="text-xs text-slate-500 mt-1">ELO matchmaking</p>
+                  <p className="font-semibold text-slate-200 group-hover:text-neon-purple transition-colors text-sm">4-Player</p>
+                  <p className="text-xs text-slate-500 mt-1">ELO match</p>
+                </button>
+                <button onClick={() => router.push('/ranks')}
+                  className="card border-white/5 hover:border-yellow-500/30 transition-all text-center py-4 group">
+                  <p className="text-2xl mb-1">🏆</p>
+                  <p className="font-semibold text-slate-200 group-hover:text-yellow-400 transition-colors text-sm">Ranks</p>
+                  <p className="text-xs text-slate-500 mt-1">View road</p>
                 </button>
               </div>
+            </div>
+
+            {/* ELO Rank Bar — Clash Royale style */}
+            {profile && (() => {
+              const curElo = eloTab === '1v1' ? (profile.elo_1v1 ?? profile.elo ?? 1200) : (profile.elo_4p ?? profile.elo ?? 1200)
+              const rank = getRank(curElo)
+              return (
+                <div className="card border-white/5 space-y-3">
+                  {/* Tab switcher */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setEloTab('1v1')}
+                      className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${eloTab === '1v1' ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-slate-600 hover:text-slate-400'}`}
+                    >⚔️ 1v1</button>
+                    <button
+                      onClick={() => setEloTab('4p')}
+                      className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${eloTab === '4p' ? 'bg-neon-purple/10 text-neon-purple' : 'text-slate-600 hover:text-slate-400'}`}
+                    >🏟️ 4P</button>
+                  </div>
+
+                  {/* Rank display */}
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+                      style={{ background: rank.bgColor, border: `1px solid ${rank.color}40` }}
+                    >
+                      {rank.emoji}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between mb-1">
+                        <p className="font-bold text-sm" style={{ color: rank.color }}>{rank.divisionName}</p>
+                        <p className="text-xs text-slate-500 font-mono">{curElo} ELO</p>
+                      </div>
+                      {/* Progress bar */}
+                      <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-700"
+                          style={{
+                            width: `${rank.progress * 100}%`,
+                            background: `linear-gradient(90deg, ${rank.color}60, ${rank.color})`,
+                            boxShadow: `0 0 6px ${rank.color}80`,
+                          }}
+                        />
+                      </div>
+                      <div className="flex justify-between mt-0.5">
+                        <span className="text-xs text-slate-700">{rank.divisionMin}</span>
+                        <span className="text-xs text-slate-700">{rank.divisionMax}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Shop & Leaderboard cards */}
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                onClick={() => router.push('/leaderboard')}
+                className="card border-neon-amber/10 hover:border-neon-amber/30 transition-all text-center py-5 group"
+              >
+                <p className="text-3xl mb-2">🏆</p>
+                <p className="font-semibold text-slate-200 group-hover:text-neon-amber transition-colors">Leaderboard</p>
+                <p className="text-xs text-slate-500 mt-1">Top ranked players</p>
+              </button>
+              <button
+                onClick={() => router.push('/shop')}
+                className="card border-neon-green/10 hover:border-neon-green/30 transition-all text-center py-5 group"
+              >
+                <p className="text-3xl mb-2">🎨</p>
+                <p className="font-semibold text-slate-200 group-hover:text-neon-green transition-colors">Shop</p>
+                <p className="text-xs text-slate-500 mt-1">Skins &amp; cosmetics</p>
+              </button>
             </div>
           </div>
         )}
 
         {/* FRIENDS TAB */}
-        {!hostingGame && activeTab === 'friends' && (
+        {activeTab === 'friends' && (
           <div className="space-y-4 animate-fade-in">
             {/* Add friend */}
             <div className="card">
@@ -389,7 +424,6 @@ export default function LobbyPage() {
   )
 
   async function inviteFriendToGame(friendId: string, hostId: string) {
-    // Create a casual game and invite the friend
     const { data: game } = await supabase.from('games').insert({
       mode: 'casual_1v1', host_id: hostId,
       join_code: Math.random().toString(36).substring(2,7).toUpperCase(),

@@ -15,6 +15,8 @@ export interface Profile {
   username: string
   email?: string
   elo: number
+  elo_1v1: number
+  elo_4p: number
   coins: number
   games_played: number
   games_won: number

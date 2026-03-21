@@ -23,6 +23,7 @@ html, body {
   font-family: 'JetBrains Mono', monospace;
   min-height: 100vh;
   overflow-x: hidden;
+  color-scheme: dark;
 }
 
 /* Neon text glow utilities */
@@ -98,6 +99,17 @@ html, body {
   @apply w-full bg-bg-elevated border border-white/10 rounded-lg px-4 py-2.5 text-white
          placeholder-slate-500 focus:outline-none focus:border-neon-cyan/50
          focus:ring-1 focus:ring-neon-cyan/30 transition-all;
+  background-color: #1e1e3f !important;
+  color: #e2e8f0 !important;
+}
+
+.input:-webkit-autofill,
+.input:-webkit-autofill:hover,
+.input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px #1e1e3f inset !important;
+  -webkit-text-fill-color: #e2e8f0 !important;
+  box-shadow: 0 0 0px 1000px #1e1e3f inset !important;
+  caret-color: #e2e8f0;
 }
 
 /* Modal overlay */
@@ -118,13 +130,15 @@ html, body {
 
 /* Board rotation animation */
 .board-rotating {
-  animation: board-spin 0.5s ease-in-out;
+  animation: board-spin 0.45s ease-in-out;
+  transform-origin: center center;
 }
 
 @keyframes board-spin {
-  0%   { transform: rotate(0deg)  scale(1);    }
-  40%  { transform: rotate(45deg) scale(0.92); }
-  100% { transform: rotate(90deg) scale(1);    }
+  0%   { transform: rotate(0deg)   scale(1);    opacity: 1; }
+  35%  { transform: rotate(45deg)  scale(0.88); opacity: 0.7; }
+  65%  { transform: rotate(85deg)  scale(0.88); opacity: 0.7; }
+  100% { transform: rotate(90deg)  scale(1);    opacity: 1; }
 }
 
 /* Piece drop animation */

@@ -165,8 +165,7 @@ function SkinSection({ title, price, skins, owned, equipped, buying, onBuy, onEq
           return (
             <div
               key={skin.id}
-              className={`card border transition-all ${isEquipped ? 'border-opacity-60' : 'border-white/5 hover:border-white/10'}`}
-              style={{ borderColor: isEquipped ? skin.color : undefined }}
+              className="card border border-white/5 hover:border-white/10 transition-all"
             >
               {/* Color swatch */}
               <div
