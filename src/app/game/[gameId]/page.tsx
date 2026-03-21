@@ -247,7 +247,7 @@ export default function GamePage() {
   }, [gameId, supabase])
 
   // ── Drop a piece ────────────────────────────────────────────────────────────
-  const handleColumnClick = useCallback(async (col: number) => {
+  const handleColumnClick = useCallback(async (col: number, reverse = false) => {
     const myProfile = myProfileRef.current
     const game = gameRef.current
     const currentPlayers = playersRef.current
@@ -258,7 +258,7 @@ export default function GamePage() {
 
     processingMove.current = true
 
-    const result = dropPiece(board, col, mySymbol)
+    const result = dropPiece(board, col, mySymbol, reverse)
     if (!result.isValid) { processingMove.current = false; return }
 
     // Immediate local update — show piece before DB round-trip
@@ -379,7 +379,7 @@ export default function GamePage() {
       const lElo = lP.elo_1v1 ?? lP.elo ?? 0
       const [newWEloRaw, newLEloRaw, wChange, lChange] = calculate1v1Elo(wElo, lElo, wP.games_played, lP.games_played)
       const newWElo = Math.max(0, newWEloRaw)
-      const newLElo = Math.max(0, newLEloRaw)
+      const newLElo = lElo > 200 ? Math.max(0, newLEloRaw) : lElo
       const coins = COIN_REWARDS.competitive_1v1
 
       await supabase.from('profiles').update({
@@ -411,8 +411,8 @@ export default function GamePage() {
         const placement = isWin ? 1 : i + 1
         const coinKey = placement as 1 | 2 | 3 | 4
         const earned = coins[coinKey] ?? coins[4]
-        const eloChange = isWin ? ELO_CONFIG.win_reward : -ELO_CONFIG.loss_penalty
-        const newElo = Math.max(0, pElo + eloChange)
+        const eloChange = isWin ? 150 : -115
+        const newElo = (!isWin && pElo <= 200) ? pElo : Math.max(0, pElo + eloChange)
         await supabase.from('profiles').update({
           elo_4p: newElo, coins: p.coins + earned,
           games_played: p.games_played + 1, games_won: isWin ? p.games_won + 1 : p.games_won,
@@ -433,6 +433,28 @@ export default function GamePage() {
       board_state: createBoard(),
     }).eq('id', gameId)
   }
+
+  // ── Leave game (forfeit) ───────────────────────────────────────────────────
+  const leaveGame = useCallback(async () => {
+    const game = gameRef.current
+    const myProf = myProfileRef.current
+    const currentPlayers = playersRef.current
+    // Competitive game in progress — forfeit: opponent wins
+    if (game && game.status === 'active' && myProf &&
+        !game.mode.startsWith('hosted') && game.host_id == null) {
+      const opponent = currentPlayers.find(p => p.profile_id !== myProf.id)
+      if (opponent) {
+        await distributeRewards(opponent.profile_id)
+        await supabase.from('games').update({
+          status: 'abandoned',
+          winner_id: opponent.profile_id,
+          completed_at: new Date().toISOString(),
+        }).eq('id', gameId)
+      }
+    }
+    router.push('/')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId, supabase, router])
 
   // ── Cancel hosted game ──────────────────────────────────────────────────────
   const cancelGame = async () => {
@@ -594,7 +616,7 @@ export default function GamePage() {
       {/* Leave button */}
       {gameActive && (
         <button
-          onClick={() => router.push('/')}
+          onClick={() => router.leaveGame}
           className="mt-3 text-xs text-slate-700 hover:text-slate-500 transition-colors"
         >
           Leave game
