@@ -38,6 +38,7 @@ export default function GamePage() {
   const [error, setError]                 = useState<string | null>(null)
   const [rotationCount, setRotationCount] = useState(0)
   const [lastDrop, setLastDrop]           = useState<{ row: number; col: number } | null>(null)
+  const [playerColors, setPlayerColors] = useState<Partial<Record<PlayerSymbol, { color: string; glow: string }>>>({})
   const [turnTimer, setTurnTimer]         = useState(30)
 
   // Stable refs — never stale
