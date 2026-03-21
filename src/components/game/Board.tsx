@@ -133,7 +133,6 @@ export default function GameBoard({
         {isRotating && (
           <div className="absolute inset-0 rounded-xl bg-neon-cyan/8 pointer-events-none border border-neon-cyan/40" />
         )}
-        )}
       </div>
 
       <TurnIndicator
