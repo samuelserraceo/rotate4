@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react'
 import type { Board, PlayerSymbol, GamePlayer, Profile } from '@/types'
 import { SYMBOL_COLORS } from '@/types'
-import { BOARD_SIZE, getLandingRow } from '@/lib/game/board'
+import { BOARD_SIZE, getLandingRow, getTopLandingRow } from '@/lib/game/board'
 
 interface BoardProps {
   board: Board
@@ -12,7 +12,7 @@ interface BoardProps {
   mySymbol: PlayerSymbol | null
   winningCells: [number, number][] | null
   isRotating: boolean
-  onColumnClick: (col: number) => void
+  onColumnClick: (col: number, reverse: boolean) => void
   disabled: boolean
   recentDrop?: { row: number; col: number } | null
 }
@@ -28,16 +28,18 @@ export default function GameBoard({
   disabled,
   recentDrop,
 }: BoardProps) {
-  const [hoveredCol, setHoveredCol] = useState<number | null>(null)
+  const [hovered, setHovered] = useState<{ col: number; rev: boolean } | null>(null)
   const isMyTurn = mySymbol !== null && currentSymbol === mySymbol
   const canClick = isMyTurn && !disabled && !isRotating
+  // Ghost landing row depends on drop direction
+  const ghostRow = hovered !== null
+    ? (hovered.rev ? getTopLandingRow(board, hovered.col) : getLandingRow(board, hovered.col))
+    : -1
 
-  // Compute landing row for ghost piece
-  const landingRow = hoveredCol !== null ? getLandingRow(board, hoveredCol) : -1
-
-  const handleCellClick = useCallback((col: number) => {
+  const handleCellClick = useCallback((col: number, row: number) => {
     if (!canClick) return
-    onColumnClick(col)
+    const rev = row < Math.floor(BOARD_SIZE / 2)
+    onColumnClick(col, rev)
   }, [canClick, onColumnClick])
 
   const isWinningCell = (row: number, col: number) =>
@@ -52,59 +54,85 @@ export default function GameBoard({
         {/* Player labels in corners */}
         <PlayerCorners players={players} currentSymbol={currentSymbol} mySymbol={mySymbol} />
 
-        {/* Drop arrow indicator above hovered column */}
+        {/* Top arrows — normal drop (piece falls DOWN to bottom of stack) */}
         {canClick && (
           <div className="flex mb-1">
-            {Array.from({ length: BOARD_SIZE }, (_, c) => (
-              <div key={c} className="flex-1 flex justify-center" style={{ minWidth: 0 }}>
-                {hoveredCol === c && landingRow !== -1 && (
-                  <div
-                    className="text-sm animate-bounce"
-                    style={{ color: mySymbol ? SYMBOL_COLORS[mySymbol].color : '#00f5ff' }}
-                  >
-                    ▼
-                  </div>
-                )}
-              </div>
-            ))}
+            {Array.from({ length: BOARD_SIZE }, (_, c) => {
+              const lr = getLandingRow(board, c)
+              return (
+                <div key={c} className="flex-1 flex justify-center cursor-pointer"
+                  style={{ minWidth: 0 }}
+                  onMouseEnter={() => setHovered({ col: c, rev: false })}
+                  onMouseLeave={() => setHovered(null)}
+                  onClick={() => { if (canClick && lr !== -1) onColumnClick(c, false) }}
+                >
+                  <div className="text-sm transition-opacity"
+                    style={{
+                      color: mySymbol ? SYMBOL_COLORS[mySymbol].color : '#00f5ff',
+                      opacity: hovered?.col === c && !hovered.rev ? 1 : 0.25,
+                    }}
+                  >▼</div>
+                </div>
+              )
+            })}
           </div>
         )}
-
         {/* Grid */}
-        <div
-          className="rounded-xl overflow-hidden border border-neon-cyan/10"
+        <div className="rounded-xl overflow-hidden border border-neon-cyan/10"
           style={{ background: 'rgba(13,13,27,0.9)' }}
         >
           {board.map((row, rIdx) => (
             <div key={rIdx} className="flex">
               {row.map((cell, cIdx) => {
                 const winning = isWinningCell(rIdx, cIdx)
-                const isLandingRow = hoveredCol === cIdx && rIdx === landingRow && !cell && canClick
+                const isGhost = hovered?.col === cIdx && rIdx === ghostRow && !cell && canClick
                 const isRecentDrop = recentDrop?.row === rIdx && recentDrop?.col === cIdx
-
                 return (
                   <BoardCell
                     key={cIdx}
                     cell={cell}
                     isWinning={winning}
-                    isLandingRow={isLandingRow}
+                    isLandingRow={isGhost}
                     isRecentDrop={isRecentDrop}
-                    canClick={canClick && landingRow !== -1}
+                    canClick={canClick && ghostRow !== -1}
                     mySymbol={mySymbol}
-                    onClick={() => handleCellClick(cIdx)}
-                    onMouseEnter={() => canClick && setHoveredCol(cIdx)}
-                    onMouseLeave={() => setHoveredCol(null)}
-                    onTouchStart={() => canClick && setHoveredCol(cIdx)}
+                    onClick={() => handleCellClick(cIdx, rIdx)}
+                    onMouseEnter={() => canClick && setHovered({ col: cIdx, rev: rIdx < Math.floor(BOARD_SIZE / 2) })}
+                    onMouseLeave={() => setHovered(null)}
+                    onTouchStart={() => canClick && setHovered({ col: cIdx, rev: rIdx < Math.floor(BOARD_SIZE / 2) })}
                   />
                 )
               })}
             </div>
           ))}
         </div>
-
+        {/* Bottom arrows — reverse drop (piece rises UP to top of stack) */}
+        {canClick && (
+          <div className="flex mt-1">
+            {Array.from({ length: BOARD_SIZE }, (_, c) => {
+              const tlr = getTopLandingRow(board, c)
+              return (
+                <div key={c} className="flex-1 flex justify-center cursor-pointer"
+                  style={{ minWidth: 0 }}
+                  onMouseEnter={() => setHovered({ col: c, rev: true })}
+                  onMouseLeave={() => setHovered(null)}
+                  onClick={() => { if (canClick && tlr !== -1) onColumnClick(c, true) }}
+                >
+                  <div className="text-sm transition-opacity"
+                    style={{
+                      color: mySymbol ? SYMBOL_COLORS[mySymbol].color : '#00f5ff',
+                      opacity: hovered?.col === c && hovered.rev ? 1 : 0.25,
+                    }}
+                  >▲</div>
+                </div>
+              )
+            })}
+          </div>
+        )}
         {/* Rotation overlay flash */}
         {isRotating && (
           <div className="absolute inset-0 rounded-xl bg-neon-cyan/8 pointer-events-none border border-neon-cyan/40" />
+        )}
         )}
       </div>
 
@@ -277,9 +305,7 @@ function TurnIndicator({ currentSymbol, mySymbol, players, disabled, isRotating 
         <p className="text-neon-amber text-glow-amber font-semibold text-sm animate-pulse">
           ↻ Board Rotating…
         </p>
-      ) : disabled ? (
-        <p className="text-slate-500 text-sm">Game over</p>
-      ) : (
+      ) : disabled ? null : (
         <div>
           <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">Current Turn</p>
           <p className="font-bold text-lg" style={{ color, textShadow: `0 0 10px ${color}66` }}>
