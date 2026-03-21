@@ -5,6 +5,22 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/types'
 
+const TIERS = [
+  { name: 'Bronze', min: 0, max: 2000 },
+  { name: 'Silver', min: 2000, max: 3500 },
+  { name: 'Gold', min: 3500, max: 5000 },
+  { name: 'Diamond', min: 5000, max: 7000 },
+  { name: 'Emerald', min: 7000, max: 10000 },
+  { name: 'Champion', min: 10000, max: Infinity },
+]
+
+function getTierIndex(elo: number): number {
+  for (let i = TIERS.length - 1; i >= 0; i--) {
+    if (elo >= TIERS[i].min) return i
+  }
+  return 0
+}
+
 export default function MatchmakingClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -88,12 +104,15 @@ export default function MatchmakingClient() {
     const me = allQueue.find(q => q.profile_id === userId)
     if (!me) return
 
-    // ELO range matching — widens over time
+    // Arena-based matching — same tier, expands to adjacent tiers after 60s
     const myElo = me.elo ?? 0
-    const eloRange = 200 + Math.floor(waitTimeRef.current / 30) * 100
+    const myTierIdx = getTierIndex(myElo)
+    const tierExpand = waitTimeRef.current >= 60 ? 1 : 0
+    const minTier = Math.max(0, myTierIdx - tierExpand)
+    const maxTier = Math.min(TIERS.length - 1, myTierIdx + tierExpand)
     let queue = allQueue.filter(q => {
-      const qElo = q.elo ?? 0
-      return Math.abs(qElo - myElo) <= eloRange
+      const qTier = getTierIndex(q.elo ?? 0)
+      return qTier >= minTier && qTier <= maxTier
     })
 
     if (queue.length < maxPlayers) return
@@ -142,7 +161,8 @@ export default function MatchmakingClient() {
   const myElo = profile
     ? (mode === '1v1' ? (profile.elo_1v1 ?? profile.elo ?? 0) : (profile.elo_4p ?? profile.elo ?? 0))
     : 1200
-  const eloRange = 200 + Math.floor(waitTime / 30) * 100
+  const myTierName = TIERS[getTierIndex(myElo)]?.name ?? 'Bronze'
+  const tierExpanded = waitTime >= 60
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -197,8 +217,8 @@ export default function MatchmakingClient() {
             <p className="text-slate-500 text-sm font-mono">{formatTime(waitTime)}</p>
             {profile && (
               <p className="text-slate-600 text-xs">
-                ELO range: {myElo - eloRange} – {myElo + eloRange}
-                <span className="text-slate-700 ml-1">(widens every 30s)</span>
+                Arena: {myTierName}
+                {tierExpanded && <span className="text-slate-700 ml-1">(expanded to neighbors)</span>}
               </p>
             )}
           </div>
