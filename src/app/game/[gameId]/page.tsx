@@ -406,6 +406,7 @@ export default function GamePage() {
       for (let i = 0; i < currentPlayers.length; i++) {
         const pl = currentPlayers[i]
         const p = profileMap[pl.profile_id]
+        if (!p) continue
         const pElo = p.elo_4p ?? p.elo ?? 0
         const isWin = pl.profile_id === winnerId
         const placement = isWin ? 1 : i + 1
@@ -616,7 +617,7 @@ export default function GamePage() {
       {/* Leave button */}
       {gameActive && (
         <button
-          onClick={() => router.leaveGame}
+          onClick={leaveGame}
           className="mt-3 text-xs text-slate-700 hover:text-slate-500 transition-colors"
         >
           Leave game
