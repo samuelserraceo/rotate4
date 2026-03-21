@@ -3,10 +3,10 @@ export type Cell = PlayerSymbol | null
 export type Board = Cell[][]
 
 export type GameMode =
-  | 'casual_1v1'
-  | 'casual_4p'
   | 'competitive_1v1'
   | 'competitive_4p'
+  | 'hosted_1v1'
+  | 'hosted_4p'
 
 export type GameStatus = 'waiting' | 'active' | 'completed' | 'abandoned'
 
@@ -118,12 +118,10 @@ export interface WinResult {
   winningCells?: [number, number][]
 }
 
-// Economy constants
+// Economy constants — hosted games give no rewards (handled in game page)
 export const COIN_REWARDS = {
   competitive_1v1: { win: 150, loss: 30 },
   competitive_4p:  { 1: 300, 2: 100, 3: 50,  4: 20 },
-  casual_1v1:      { win: 75,  loss: 15 },
-  casual_4p:       { 1: 150, 2: 50,  3: 25,  4: 10 },
 } as const
 
 export const ELO_CONFIG = {
