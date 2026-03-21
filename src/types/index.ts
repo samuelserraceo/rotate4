@@ -141,6 +141,6 @@ export const SYMBOL_CORNERS: Record<PlayerSymbol, string> = {
 export const SYMBOL_COLORS: Record<PlayerSymbol, { color: string; glow: string }> = {
   X: { color: '#00f5ff', glow: '#00f5ff' },
   O: { color: '#a855f7', glow: '#a855f7' },
-  W: { color: '#10b981', glow: '#10b981' },
-  M: { color: '#f59e0b', glow: '#f59e0b' },
+  W: { color: '#f97316', glow: '#f97316' },
+  M: { color: '#22c55e', glow: '#22c55e' },
 }
