@@ -31,11 +31,12 @@ export default function MatchmakingClient() {
       const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
       if (mounted.current) setProfile(p)
 
-      queueEnteredAt.current = new Date().toISOString()
-      await supabase.from('matchmaking_queue').upsert({
+      // Use server-side joined_at to avoid client/server clock-skew
+      const { data: queueRow } = await supabase.from('matchmaking_queue').upsert({
         profile_id: user.id, mode, game_type: 'competitive',
         elo: mode === '1v1' ? (p?.elo_1v1 ?? p?.elo ?? 0) : (p?.elo_4p ?? p?.elo ?? 0),
-      })
+      }, { onConflict: 'profile_id' }).select('joined_at').single()
+      queueEnteredAt.current = queueRow?.joined_at ?? new Date().toISOString()
 
       matchCheckRef.current = setInterval(() => checkForMatch(user.id), 2000)
     }
