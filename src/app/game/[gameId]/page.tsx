@@ -426,6 +426,14 @@ export default function GamePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId, supabase])
 
+  // ── Start hosted game (host only) ───────────────────────────────────────
+  const startGame = async () => {
+    await supabase.from('games').update({
+      status: 'active',
+      board_state: createBoard(),
+    }).eq('id', gameId)
+  }
+
   // ── Cancel hosted game ──────────────────────────────────────────────────────
   const cancelGame = async () => {
     const myProfile = myProfileRef.current
@@ -449,6 +457,8 @@ export default function GamePage() {
   // Waiting room
   if (game?.status === 'waiting') {
     const modeLabel = game.max_players === 4 ? '4-Player' : '1v1'
+    const amHost = players[0]?.profile_id === myProfile?.id
+    const canStart = players.length >= 2
     return (
       <div className="min-h-screen flex flex-col">
         <header className="flex items-center justify-between px-4 py-3 border-b border-white/5">
@@ -505,6 +515,12 @@ export default function GamePage() {
                   style={{ animationDelay: `${i * 200}ms` }} />
               ))}
             </div>
+
+            {amHost && canStart && (
+              <button onClick={startGame} className="btn-primary w-full mb-3">
+                ▶ Start Game
+              </button>
+            )}
 
             <button onClick={cancelGame} className="btn-ghost w-full text-sm text-red-400 hover:text-red-300 border-red-500/20 hover:border-red-500/40">
               ✕ Cancel Game
