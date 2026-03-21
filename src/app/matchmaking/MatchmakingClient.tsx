@@ -80,7 +80,7 @@ export default function MatchmakingClient() {
       .gte('created_at', queueEnteredAt.current)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     if (activeGame) {
       if (matchCheckRef.current) clearInterval(matchCheckRef.current)
