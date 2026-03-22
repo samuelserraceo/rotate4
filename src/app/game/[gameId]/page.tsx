@@ -19,7 +19,7 @@ export default function GamePage() {
 
   const [game, setGame]                   = useState<Game | null>(null)
   const [players, setPlayers]             = useState<PlayerWithProfile[]>([])
-  const [myProfile, setMyProfile]         = useState<Profile | null>(null)h
+  const [myProfile, setMyProfile]         = useState<Profile | null>(null)
   const [mySymbol, setMySymbol]           = useState<PlayerSymbol | null>(null)
   const [board, setBoard]                 = useState<Board>(createBoard())
   const [currentTurn, setCurrentTurn]     = useState(0)
