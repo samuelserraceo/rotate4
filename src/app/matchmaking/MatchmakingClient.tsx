@@ -13,8 +13,7 @@ const SYMBOL_COLORS: Record<string, string> = {
 }
 
 const SYMBOLS = ['X', 'O', 'W', 'M']
-const STALE_MS = 2 * 60 * 1000
-const TAKEOVER_S = 10
+const STALE_MS = 2 * 60 * 1000 // 2 minutes — filter ghost entries
 
 export default function MatchmakingClient() {
   const router = useRouter()
@@ -32,10 +31,10 @@ export default function MatchmakingClient() {
   const matchCheckRef = useRef<NodeJS.Timeout | null>(null)
   const countdownRef = useRef<NodeJS.Timeout | null>(null)
   const mounted = useRef(true)
-  const waitTimeRef = useRef(0)
   const queueEnteredAt = useRef(new Date().toISOString())
   const userIdRef = useRef<string | null>(null)
   const gameIdRef = useRef<string | null>(null)
+  const creatingRef = useRef(false) // prevents double-create on same client
 
   const maxPlayers = mode === '4p' ? 4 : mode === '3p' ? 3 : 2
   const modeLabel = mode === '4p' ? '4-Player' : mode === '3p' ? '3-Player' : '1v1'
@@ -84,7 +83,7 @@ export default function MatchmakingClient() {
     }
 
     intervalRef.current = setInterval(() => {
-      if (mounted.current) setWaitTime(t => { waitTimeRef.current = t + 1; return t + 1 })
+      if (mounted.current) setWaitTime(t => t + 1)
     }, 1000)
 
     init()
@@ -102,15 +101,16 @@ export default function MatchmakingClient() {
   }, [])
 
   const checkForMatch = async (userId: string) => {
+    // Step 1: Already placed in a game by another player?
     const { data: myGamePlayer } = await supabase
       .from('game_players')
-      .select('game_id, games(id, status, mode, created_at)')
+      .select('game_id, games(id, status, created_at)')
       .eq('profile_id', userId)
       .order('id', { ascending: false })
       .limit(1)
       .maybeSingle()
 
-    const gameData = myGamePlayer?.games as { id: string; status: string; mode: string; created_at: string } | undefined
+    const gameData = myGamePlayer?.games as { id: string; status: string; created_at: string } | undefined
     if (myGamePlayer && gameData?.status === 'active' && gameData?.created_at >= queueEnteredAt.current) {
       if (matchCheckRef.current) clearInterval(matchCheckRef.current)
       await supabase.from('matchmaking_queue').delete().eq('profile_id', userId)
@@ -127,6 +127,7 @@ export default function MatchmakingClient() {
       return
     }
 
+    // Step 2: Fetch queue
     const { data: allQueue } = await supabase
       .from('matchmaking_queue')
       .select('*, profiles(id, username, elo, elo_1v1, elo_3p, elo_4p)')
@@ -137,6 +138,7 @@ export default function MatchmakingClient() {
 
     if (!allQueue) return
 
+    // Step 3: Filter ghost entries older than 2 minutes
     const staleThreshold = new Date(Date.now() - STALE_MS).toISOString()
     const freshQueue = allQueue.filter(q => q.joined_at > staleThreshold)
 
@@ -148,48 +150,65 @@ export default function MatchmakingClient() {
     const matchedQueue = freshQueue.slice(0, maxPlayers)
     if (!matchedQueue.find(q => q.profile_id === userId)) return
 
-    const amIOldest = matchedQueue[0].profile_id === userId
-    const oldestJoinedMs = new Date(matchedQueue[0].joined_at).getTime()
-    const canTakeover = !amIOldest
-      && waitTimeRef.current >= TAKEOVER_S
-      && (Date.now() - oldestJoinedMs) > TAKEOVER_S * 1000
+    // ONLY the oldest player in the matched set creates the game — no exceptions, no takeover.
+    // This prevents the race condition where two players simultaneously create duplicate games.
+    if (matchedQueue[0].profile_id !== userId) return
 
-    if (!amIOldest && !canTakeover) return
+    // Guard: prevent this client from creating twice if the interval fires again before we finish
+    if (creatingRef.current) return
+    creatingRef.current = true
 
     if (matchCheckRef.current) clearInterval(matchCheckRef.current)
 
+    // Step 4: Create the game
     const fullMode = `competitive_${mode}` as const
-    const { data: game } = await supabase.from('games').insert({
+    const { data: game, error: gameError } = await supabase.from('games').insert({
       mode: fullMode,
       max_players: maxPlayers,
       status: 'active',
     }).select().single()
 
-    if (!game) {
+    if (gameError || !game) {
+      creatingRef.current = false
       matchCheckRef.current = setInterval(() => checkForMatch(userId), 2000)
       return
     }
 
-    const playersList: { username: string; symbol: string }[] = []
-    for (let i = 0; i < matchedQueue.length; i++) {
-      const qp = matchedQueue[i]
-      const prof = qp.profiles as { elo_1v1?: number; elo_3p?: number; elo_4p?: number; elo?: number; username?: string } | null
+    // Step 5: Build all game_players rows and insert as a SINGLE BATCH (atomic)
+    const rows = matchedQueue.map((qp, i) => {
+      const prof = qp.profiles as { elo_1v1?: number; elo_3p?: number; elo_4p?: number; elo?: number } | null
       const eloBefore = mode === '1v1'
         ? (prof?.elo_1v1 ?? qp.elo ?? 1200)
         : mode === '3p'
           ? (prof?.elo_3p ?? qp.elo ?? 1200)
           : (prof?.elo_4p ?? qp.elo ?? 1200)
-
-      await supabase.from('game_players').insert({
+      return {
         game_id: game.id,
         profile_id: qp.profile_id,
         symbol: SYMBOLS[i],
         player_index: i,
         elo_before: eloBefore,
-      })
-      await supabase.from('matchmaking_queue').delete().eq('profile_id', qp.profile_id)
-      playersList.push({ username: prof?.username ?? '?', symbol: SYMBOLS[i] })
+      }
+    })
+
+    const { error: insertError } = await supabase.from('game_players').insert(rows)
+
+    if (insertError) {
+      // Rollback — clean up the orphaned game and re-enter the queue
+      await supabase.from('games').delete().eq('id', game.id)
+      creatingRef.current = false
+      matchCheckRef.current = setInterval(() => checkForMatch(userId), 2000)
+      return
     }
+
+    // Step 6: Remove ALL matched players from queue in one call
+    const matchedIds = matchedQueue.map(q => q.profile_id)
+    await supabase.from('matchmaking_queue').delete().in('profile_id', matchedIds)
+
+    const playersList = matchedQueue.map((qp, i) => ({
+      username: (qp.profiles as any)?.username ?? '?',
+      symbol: SYMBOLS[i],
+    }))
 
     if (mounted.current) startCountdown(game.id, playersList)
   }
@@ -308,4 +327,4 @@ export default function MatchmakingClient() {
       </div>
     </div>
   )
-    }
+        }
