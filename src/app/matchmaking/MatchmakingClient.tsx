@@ -35,7 +35,7 @@ export default function MatchmakingClient() {
   const mounted                   = useRef(true)
   const waitTimeRef               = useRef(0)
   const queueEnteredAt            = useRef(new Date().toISOString())
-  const profileRef                = useRef<Profile | null>(null)
+  const userIdRef                 = useRef<string | null>(null)
 
   const maxPlayers = mode === '4p' ? 4 : 2
 
@@ -45,8 +45,9 @@ export default function MatchmakingClient() {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
+      userIdRef.current = user.id
       const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (mounted.current) { setProfile(p); profileRef.current = p }
+      if (mounted.current) setProfile(p)
 
       const { data: queueRow } = await supabase.from('matchmaking_queue').upsert({
         profile_id: user.id, mode, game_type: 'competitive',
@@ -66,22 +67,14 @@ export default function MatchmakingClient() {
       mounted.current = false
       if (intervalRef.current)   clearInterval(intervalRef.current)
       if (matchCheckRef.current) clearInterval(matchCheckRef.current)
-      const p = profileRef.current
-      if (p) {
-        supabase.from('matchmaking_queue').delete().eq('profile_id', p.id).then(() => {})
+      if (userIdRef.current) {
+        supabase.from('matchmaking_queue').delete().eq('profile_id', userIdRef.current).then(() => {})
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const checkForMatch = async (userId: string) => {
-    // Purge stale queue entries older than 2 minutes (ghost players who disconnected)
-    const staleThreshold = new Date(Date.now() - 2 * 60 * 1000).toISOString()
-    await supabase.from('matchmaking_queue')
-      .delete()
-      .lt('joined_at', staleThreshold)
-      .neq('profile_id', userId)
-
-    // Look for active games created AFTER we joined the queue
+    // Check if we already have an active game (created after we joined queue)
     const { data: activeGame } = await supabase
       .from('games')
       .select('id, status, created_at, game_players!inner(profile_id)')
@@ -114,14 +107,14 @@ export default function MatchmakingClient() {
     const me = allQueue.find(q => q.profile_id === userId)
     if (!me) return
 
-    // Arena-based matching: same tier, expands to adjacent tiers after 60s
+    // Arena-based matching: same tier for first 60s, then adjacent tiers open up
     const myElo = me.elo ?? 0
     const myTierIdx = getTierIndex(myElo)
     const tierExpand = waitTimeRef.current >= 60 ? 1 : 0
     const minTier = Math.max(0, myTierIdx - tierExpand)
     const maxTier = Math.min(TIERS.length - 1, myTierIdx + tierExpand)
 
-    let queue = allQueue.filter(q => {
+    const queue = allQueue.filter(q => {
       const qTier = getTierIndex(q.elo ?? 0)
       return qTier >= minTier && qTier <= maxTier
     })
@@ -132,50 +125,25 @@ export default function MatchmakingClient() {
     const matchedQueue = queue.slice(0, maxPlayers)
     if (!matchedQueue.find(q => q.profile_id === userId)) return
 
-    // Only the first person in the matched set creates the game.
-    // After 10s, if first player left queue without creating a game, second player takes over.
-    const isFirst = matchedQueue[0].profile_id === userId
-    const canTakeover = waitTimeRef.current >= 10
-
-    if (!isFirst && !canTakeover) return
-
-    if (!isFirst) {
-      const { data: firstStillQueued } = await supabase
-        .from('matchmaking_queue')
-        .select('profile_id')
-        .eq('profile_id', matchedQueue[0].profile_id)
-        .maybeSingle()
-
-      const { data: existingGame } = await supabase
-        .from('games')
-        .select('id, game_players!inner(profile_id)')
-        .eq('status', 'active')
-        .eq('game_players.profile_id', userId)
-        .gte('created_at', queueEnteredAt.current)
-        .maybeSingle()
-
-      if (existingGame) {
-        if (matchCheckRef.current) clearInterval(matchCheckRef.current)
-        await supabase.from('matchmaking_queue').delete().eq('profile_id', userId)
-        if (mounted.current) setStatus('found')
-        setTimeout(() => router.push(`/game/${existingGame.id}`), 800)
-        return
-      }
-      if (firstStillQueued) return
-    }
+    // Only the oldest player in the matched set creates the game
+    if (matchedQueue[0].profile_id !== userId) return
 
     if (mounted.current) setStatus('found')
 
     const { data: game } = await supabase.from('games').insert({
-      mode: fullMode, max_players: maxPlayers, status: 'active',
+      mode: fullMode,
+      max_players: maxPlayers,
+      status: 'active',
     }).select().single()
     if (!game) return
 
     const symbols = ['X', 'O', 'W', 'M']
     for (let i = 0; i < matchedQueue.length; i++) {
       await supabase.from('game_players').insert({
-        game_id: game.id, profile_id: matchedQueue[i].profile_id,
-        symbol: symbols[i], player_index: i,
+        game_id: game.id,
+        profile_id: matchedQueue[i].profile_id,
+        symbol: symbols[i],
+        player_index: i,
         elo_before: matchedQueue[i].elo ?? 0,
       })
       await supabase.from('matchmaking_queue').delete().eq('profile_id', matchedQueue[i].profile_id)
@@ -185,8 +153,8 @@ export default function MatchmakingClient() {
     setTimeout(() => router.push(`/game/${game.id}`), 800)
   }
   const cancelMatchmaking = async () => {
-    if (profile) {
-      await supabase.from('matchmaking_queue').delete().eq('profile_id', profile.id)
+    if (userIdRef.current) {
+      await supabase.from('matchmaking_queue').delete().eq('profile_id', userIdRef.current)
     }
     router.push('/')
   }
