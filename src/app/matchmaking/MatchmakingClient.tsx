@@ -38,6 +38,7 @@ export default function MatchmakingClient() {
   const profileRef                = useRef<Profile | null>(null)
 
   const maxPlayers = mode === '4p' ? 4 : 2
+
   useEffect(() => {
     mounted.current = true
 
@@ -47,7 +48,6 @@ export default function MatchmakingClient() {
       const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
       if (mounted.current) { setProfile(p); profileRef.current = p }
 
-      // Use server-side joined_at to avoid client/server clock-skew
       const { data: queueRow } = await supabase.from('matchmaking_queue').upsert({
         profile_id: user.id, mode, game_type: 'competitive',
         elo: mode === '1v1' ? (p?.elo_1v1 ?? p?.elo ?? 0) : (p?.elo_4p ?? p?.elo ?? 0),
@@ -66,7 +66,6 @@ export default function MatchmakingClient() {
       mounted.current = false
       if (intervalRef.current)   clearInterval(intervalRef.current)
       if (matchCheckRef.current) clearInterval(matchCheckRef.current)
-      // Clean up queue entry on unmount so stale entries don't block others
       const p = profileRef.current
       if (p) {
         supabase.from('matchmaking_queue').delete().eq('profile_id', p.id).then(() => {})
@@ -115,13 +114,16 @@ export default function MatchmakingClient() {
     const me = allQueue.find(q => q.profile_id === userId)
     if (!me) return
 
-    // ELO range matching — widens over time (200 base + 100 every 15s)
+    // Arena-based matching: same tier, expands to adjacent tiers after 60s
     const myElo = me.elo ?? 0
-    const eloRange = 200 + Math.floor(waitTimeRef.current / 15) * 100
+    const myTierIdx = getTierIndex(myElo)
+    const tierExpand = waitTimeRef.current >= 60 ? 1 : 0
+    const minTier = Math.max(0, myTierIdx - tierExpand)
+    const maxTier = Math.min(TIERS.length - 1, myTierIdx + tierExpand)
 
     let queue = allQueue.filter(q => {
-      const qElo = q.elo ?? 0
-      return Math.abs(qElo - myElo) <= eloRange
+      const qTier = getTierIndex(q.elo ?? 0)
+      return qTier >= minTier && qTier <= maxTier
     })
 
     if (queue.length < maxPlayers) return
@@ -129,15 +131,14 @@ export default function MatchmakingClient() {
 
     const matchedQueue = queue.slice(0, maxPlayers)
     if (!matchedQueue.find(q => q.profile_id === userId)) return
-    // Only the first person in the matched set creates the game
-    // BUT if we've waited 10+ seconds, allow second player to also attempt
-    // This prevents deadlock when first player disconnects between checks
+
+    // Only the first person in the matched set creates the game.
+    // After 10s, if first player left queue without creating a game, second player takes over.
     const isFirst = matchedQueue[0].profile_id === userId
     const canTakeover = waitTimeRef.current >= 10
 
     if (!isFirst && !canTakeover) return
 
-    // Double-check: if not first, verify first player is still in queue
     if (!isFirst) {
       const { data: firstStillQueued } = await supabase
         .from('matchmaking_queue')
@@ -145,7 +146,6 @@ export default function MatchmakingClient() {
         .eq('profile_id', matchedQueue[0].profile_id)
         .maybeSingle()
 
-      // Check if we already have an active game before creating a new one
       const { data: existingGame } = await supabase
         .from('games')
         .select('id, game_players!inner(profile_id)')
@@ -161,32 +161,21 @@ export default function MatchmakingClient() {
         setTimeout(() => router.push(`/game/${existingGame.id}`), 800)
         return
       }
-
-      // If first player left queue but no game exists, take over
-      if (!firstStillQueued) {
-        // First player vanished without creating a game
-      } else {
-        // First player is still in queue, give them more time
-        return
-      }
+      if (firstStillQueued) return
     }
 
     if (mounted.current) setStatus('found')
 
     const { data: game } = await supabase.from('games').insert({
-      mode: fullMode,
-      max_players: maxPlayers,
-      status: 'active',
+      mode: fullMode, max_players: maxPlayers, status: 'active',
     }).select().single()
     if (!game) return
 
     const symbols = ['X', 'O', 'W', 'M']
     for (let i = 0; i < matchedQueue.length; i++) {
       await supabase.from('game_players').insert({
-        game_id: game.id,
-        profile_id: matchedQueue[i].profile_id,
-        symbol: symbols[i],
-        player_index: i,
+        game_id: game.id, profile_id: matchedQueue[i].profile_id,
+        symbol: symbols[i], player_index: i,
         elo_before: matchedQueue[i].elo ?? 0,
       })
       await supabase.from('matchmaking_queue').delete().eq('profile_id', matchedQueue[i].profile_id)
@@ -207,7 +196,9 @@ export default function MatchmakingClient() {
   const myElo = profile
     ? (mode === '1v1' ? (profile.elo_1v1 ?? profile.elo ?? 0) : (profile.elo_4p ?? profile.elo ?? 0))
     : 1200
-  const eloRange = 200 + Math.floor(waitTime / 15) * 100
+  const myTierName = TIERS[getTierIndex(myElo)]?.name ?? 'Bronze'
+  const tierExpanded = waitTime >= 60
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="flex items-center justify-between px-4 py-3 border-b border-white/5">
@@ -236,15 +227,12 @@ export default function MatchmakingClient() {
               {mode === '4p' ? '4-Player' : '1v1'}
             </span>
           </div>
+
           <div className="flex gap-2 mb-5">
             {Array.from({ length: maxPlayers }, (_, i) => (
-              <div
-                key={i}
+              <div key={i}
                 className="flex-1 h-14 rounded-xl border flex flex-col items-center justify-center gap-1"
-                style={{
-                  borderColor: i === 0 ? '#00f5ff40' : '#ffffff10',
-                  background: i === 0 ? '#00f5ff08' : 'transparent',
-                }}
+                style={{ borderColor: i === 0 ? '#00f5ff40' : '#ffffff10', background: i === 0 ? '#00f5ff08' : 'transparent' }}
               >
                 <span className="text-lg font-black" style={{ color: i === 0 ? '#00f5ff' : '#1e293b' }}>
                   {i === 0 ? (profile?.username?.[0]?.toUpperCase() ?? '?') : '?'}
@@ -260,8 +248,8 @@ export default function MatchmakingClient() {
             <p className="text-slate-500 text-sm font-mono">{formatTime(waitTime)}</p>
             {profile && (
               <p className="text-slate-600 text-xs">
-                ELO range: {Math.max(0, myElo - eloRange)} {'\u2013'} {myElo + eloRange}
-                <span className="text-slate-700 ml-1">(widens every 15s)</span>
+                Arena: {myTierName}
+                {tierExpanded && <span className="text-slate-700 ml-1">(expanded to neighbors)</span>}
               </p>
             )}
           </div>
@@ -269,8 +257,7 @@ export default function MatchmakingClient() {
           {status === 'searching' && (
             <div className="flex justify-center gap-1.5 mb-6">
               {[0, 1, 2].map(i => (
-                <div
-                  key={i}
+                <div key={i}
                   className="w-1.5 h-1.5 rounded-full bg-neon-cyan/40 animate-pulse"
                   style={{ animationDelay: `${i * 200}ms` }}
                 />
