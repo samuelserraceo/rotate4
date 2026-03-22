@@ -11,9 +11,7 @@ const SYMBOL_COLORS: Record<string, string> = {
   W: '#22c55e',
   M: '#f59e0b',
 }
-
 const SYMBOLS = ['X', 'O', 'W', 'M']
-const STALE_MS = 2 * 60 * 1000 // 2 minutes
 
 export default function MatchmakingClient() {
   const router = useRouter()
@@ -27,11 +25,11 @@ export default function MatchmakingClient() {
   const [foundPlayers, setFoundPlayers] = useState<{ username: string; symbol: string }[]>([])
   const [countdown, setCountdown] = useState<number | null>(null)
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
-  const matchCheckRef = useRef<NodeJS.Timeout | null>(null)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const pollRef = useRef<NodeJS.Timeout | null>(null)
   const countdownRef = useRef<NodeJS.Timeout | null>(null)
   const mounted = useRef(true)
-  const queueEnteredAt = useRef(new Date().toISOString())
+  const queueEnteredAt = useRef('')
   const userIdRef = useRef<string | null>(null)
   const gameIdRef = useRef<string | null>(null)
   const creatingRef = useRef(false)
@@ -39,17 +37,17 @@ export default function MatchmakingClient() {
   const maxPlayers = mode === '4p' ? 4 : mode === '3p' ? 3 : 2
   const modeLabel = mode === '4p' ? '4-Player' : mode === '3p' ? '3-Player' : '1v1'
 
-  const startCountdown = (gId: string, players: { username: string; symbol: string }[]) => {
+  function startCountdown(gId: string, players: { username: string; symbol: string }[]) {
     if (gameIdRef.current) return
     gameIdRef.current = gId
     setFoundPlayers(players)
     setStatus('found')
     setCountdown(5)
-    let count = 5
+    let c = 5
     countdownRef.current = setInterval(() => {
-      count -= 1
-      if (mounted.current) setCountdown(count)
-      if (count <= 0) {
+      c -= 1
+      if (mounted.current) setCountdown(c)
+      if (c <= 0) {
         clearInterval(countdownRef.current!)
         if (mounted.current) router.push(`/game/${gId}`)
       }
@@ -64,25 +62,33 @@ export default function MatchmakingClient() {
       if (!user) { router.push('/login'); return }
       userIdRef.current = user.id
 
-      const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (mounted.current) setProfile(p)
+      const { data: p } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+      if (mounted.current && p) setProfile(p)
 
       const elo = mode === '1v1'
-        ? (p?.elo_1v1 ?? p?.elo ?? 1200)
+        ? (p?.elo_1v1 ?? 1200)
         : mode === '3p'
-          ? (p?.elo_3p ?? p?.elo ?? 1200)
-          : (p?.elo_4p ?? p?.elo ?? 1200)
+          ? (p?.elo_3p ?? 1200)
+          : (p?.elo_4p ?? 1200)
 
-      const { data: queueRow } = await supabase
+      const { data: qRow } = await supabase
         .from('matchmaking_queue')
-        .upsert({ profile_id: user.id, mode, game_type: 'competitive', elo }, { onConflict: 'profile_id' })
-        .select('joined_at').single()
-      queueEnteredAt.current = queueRow?.joined_at ?? new Date().toISOString()
+        .upsert(
+          { profile_id: user.id, mode, game_type: 'competitive', elo },
+          { onConflict: 'profile_id' }
+        )
+        .select('joined_at')
+        .single()
+      queueEnteredAt.current = qRow?.joined_at ?? new Date().toISOString()
 
-      matchCheckRef.current = setInterval(() => checkForMatch(user.id), 2000)
+      pollRef.current = setInterval(() => checkForMatch(user.id), 2000)
     }
 
-    intervalRef.current = setInterval(() => {
+    timerRef.current = setInterval(() => {
       if (mounted.current) setWaitTime(t => t + 1)
     }, 1000)
 
@@ -90,8 +96,8 @@ export default function MatchmakingClient() {
 
     return () => {
       mounted.current = false
-      if (intervalRef.current) clearInterval(intervalRef.current)
-      if (matchCheckRef.current) clearInterval(matchCheckRef.current)
+      if (timerRef.current) clearInterval(timerRef.current)
+      if (pollRef.current) clearInterval(pollRef.current)
       if (countdownRef.current) clearInterval(countdownRef.current)
       if (userIdRef.current && !gameIdRef.current) {
         supabase.from('matchmaking_queue').delete().eq('profile_id', userIdRef.current).then(() => {})
@@ -100,108 +106,71 @@ export default function MatchmakingClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const checkForMatch = async (userId: string) => {
-    // Step 1: Check if already placed in an active game (another player created it for me)
-    const { data: myGamePlayer } = await supabase
+  async function checkForMatch(userId: string) {
+    // Step 1: Am I already placed in a game by someone else?
+    const { data: myEntry } = await supabase
       .from('game_players')
-      .select('game_id, games(id, status, mode, created_at)')
+      .select('game_id, games!inner(id, status, mode, created_at)')
       .eq('profile_id', userId)
+      .eq('games.status', 'active')
+      .gte('games.created_at', queueEnteredAt.current)
       .order('id', { ascending: false })
       .limit(1)
       .maybeSingle()
 
-    const gameData = myGamePlayer?.games as { id: string; status: string; mode: string; created_at: string } | undefined
-    if (myGamePlayer && gameData?.status === 'active' && gameData?.created_at >= queueEnteredAt.current) {
-      if (matchCheckRef.current) clearInterval(matchCheckRef.current)
+    if (myEntry) {
+      if (pollRef.current) clearInterval(pollRef.current)
       await supabase.from('matchmaking_queue').delete().eq('profile_id', userId)
-      const { data: gamePlayers } = await supabase
+      const { data: gps } = await supabase
         .from('game_players')
         .select('symbol, profiles(username)')
-        .eq('game_id', myGamePlayer.game_id)
+        .eq('game_id', myEntry.game_id)
         .order('player_index')
-      const players = (gamePlayers ?? []).map((gp, i) => ({
-        username: (gp.profiles as any)?.username ?? '?',
-        symbol: gp.symbol ?? SYMBOLS[i],
+      const players = (gps ?? []).map((g, i) => ({
+        username: (g.profiles as any)?.username ?? '?',
+        symbol: g.symbol ?? SYMBOLS[i],
       }))
-      if (mounted.current) startCountdown(myGamePlayer.game_id, players)
+      if (mounted.current) startCountdown(myEntry.game_id, players)
       return
     }
 
-    // Step 2: Fetch current queue for this mode
-    const { data: allQueue } = await supabase
+    // Step 2: Read queue — oldest first
+    const { data: queue } = await supabase
       .from('matchmaking_queue')
-      .select('*, profiles(id, username, elo, elo_1v1, elo_3p, elo_4p)')
+      .select('profile_id, elo, joined_at, profiles(id, username, elo_1v1, elo_3p, elo_4p)')
       .eq('mode', mode)
       .eq('game_type', 'competitive')
-      .order('joined_at')
-      .limit(50)
+      .order('joined_at', { ascending: true })
+      .limit(20)
 
-    if (!allQueue) return
+    if (!queue || queue.length < maxPlayers) return
 
-    // Step 3: Filter out stale ghost entries (>2 min old)
-    const staleThreshold = new Date(Date.now() - STALE_MS).toISOString()
-    const freshQueue = allQueue.filter(q => q.joined_at > staleThreshold)
-
-    if (freshQueue.length < maxPlayers) return
-
-    // Step 3b: Filter out candidates already in active/waiting games
-    const candidateIds = freshQueue.slice(0, Math.min(freshQueue.length, 20)).map(q => q.profile_id)
-    const { data: gpRows } = await supabase
-      .from('game_players')
-      .select('profile_id, games(id, status)')
-      .in('profile_id', candidateIds)
-      .order('id', { ascending: false })
-
-    const busyPlayers = new Set<string>()
-    const seenPlayers = new Set<string>()
-    for (const row of gpRows ?? []) {
-      if (seenPlayers.has(row.profile_id)) continue
-      seenPlayers.add(row.profile_id)
-      const s = (row.games as any)?.status
-      if (s === 'active' || s === 'waiting') {
-        busyPlayers.add(row.profile_id)
-      }
-    }
-
-    // Clean up stale queue entries for busy players in background
-    const stalePlayerIds = candidateIds.filter(id => busyPlayers.has(id))
-    if (stalePlayerIds.length > 0) {
-      supabase.from('matchmaking_queue').delete().in('profile_id', stalePlayerIds).then(() => {})
-    }
-
-    // Only consider players not already in a game
-    const validQueue = freshQueue.filter(q => !busyPlayers.has(q.profile_id))
-
-    if (validQueue.length < maxPlayers) return
-
-    const amIOldest = validQueue[0].profile_id === userId
-    if (!amIOldest) return
-
-    // Step 4: I am the oldest — prevent double-create
+    // Step 3: Only the oldest creates
+    if (queue[0].profile_id !== userId) return
     if (creatingRef.current) return
     creatingRef.current = true
+    if (pollRef.current) clearInterval(pollRef.current)
 
-    // Step 5: Create the game
-    if (matchCheckRef.current) clearInterval(matchCheckRef.current)
-
-    const matchedQueue = validQueue.slice(0, maxPlayers)
+    const matched = queue.slice(0, maxPlayers)
     const fullMode = `competitive_${mode}` as const
-    const { data: game } = await supabase.from('games').insert({
-      mode: fullMode,
-      max_players: maxPlayers,
-      status: 'active',
-    }).select().single()
 
-    if (!game) {
+    // Step 4: Create game
+    const { data: game, error: gameErr } = await supabase
+      .from('games')
+      .insert({ mode: fullMode, max_players: maxPlayers, status: 'active' })
+      .select()
+      .single()
+
+    if (gameErr || !game) {
       creatingRef.current = false
-      matchCheckRef.current = setInterval(() => checkForMatch(userId), 2000)
+      pollRef.current = setInterval(() => checkForMatch(userId), 2000)
       return
     }
 
-    // Step 6: Batch insert all game_players at once (atomic)
+    // Step 5: Batch insert all players at once
     const playersList: { username: string; symbol: string }[] = []
-    const rows = matchedQueue.map((qp, i) => {
-      const prof = qp.profiles as { elo_1v1?: number; elo_3p?: number; elo_4p?: number; elo?: number; username?: string } | null
+    const rows = matched.map((qp, i) => {
+      const prof = qp.profiles as { username?: string; elo_1v1?: number; elo_3p?: number; elo_4p?: number } | null
       const eloBefore = mode === '1v1'
         ? (prof?.elo_1v1 ?? qp.elo ?? 1200)
         : mode === '3p'
@@ -221,26 +190,25 @@ export default function MatchmakingClient() {
     if (insertErr) {
       await supabase.from('games').delete().eq('id', game.id)
       creatingRef.current = false
-      matchCheckRef.current = setInterval(() => checkForMatch(userId), 2000)
+      pollRef.current = setInterval(() => checkForMatch(userId), 2000)
       return
     }
 
-    // Step 7: Batch delete matched players from queue
-    const matchedIds = matchedQueue.map(q => q.profile_id)
-    await supabase.from('matchmaking_queue').delete().in('profile_id', matchedIds)
+    // Step 6: Remove matched players from queue
+    await supabase.from('matchmaking_queue').delete().in('profile_id', matched.map(q => q.profile_id))
 
     if (mounted.current) startCountdown(game.id, playersList)
   }
 
-  const cancelMatchmaking = async () => {
+  async function cancelMatchmaking() {
+    gameIdRef.current = 'cancelled'
     if (userIdRef.current) {
-      gameIdRef.current = 'cancelled'
       await supabase.from('matchmaking_queue').delete().eq('profile_id', userIdRef.current)
     }
     router.push('/')
   }
 
-  const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -256,7 +224,6 @@ export default function MatchmakingClient() {
       <div className="flex-1 flex flex-col items-center justify-center px-4">
         <div className="card w-full max-w-sm">
 
-          {/* Title */}
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-base font-bold text-white">
               {status === 'found'
@@ -265,10 +232,9 @@ export default function MatchmakingClient() {
                   : 'Match found! Loading\u2026'
                 : 'Searching for players\u2026'}
             </h2>
-            <div className={`w-2.5 h-2.5 rounded-full ${status === 'found' ? 'bg-neon-green animate-pulse' : 'bg-neon-cyan animate-pulse'}`} />
+            <div className={`w-2.5 h-2.5 rounded-full animate-pulse ${status === 'found' ? 'bg-neon-green' : 'bg-neon-cyan'}`} />
           </div>
 
-          {/* Mode badges */}
           <div className="flex gap-2 mb-5">
             <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">
               {'\u2694\uFE0F'} Ranked
@@ -278,7 +244,6 @@ export default function MatchmakingClient() {
             </span>
           </div>
 
-          {/* Player slots */}
           <div className="flex gap-2 mb-5">
             {Array.from({ length: maxPlayers }, (_, i) => {
               const fp = foundPlayers[i]
@@ -307,7 +272,6 @@ export default function MatchmakingClient() {
             })}
           </div>
 
-          {/* Countdown bar */}
           {status === 'found' && countdown !== null && (
             <div className="mb-5">
               <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
@@ -322,9 +286,8 @@ export default function MatchmakingClient() {
             </div>
           )}
 
-          {/* Timer + info */}
           <div className="mb-6 text-center">
-            <p className="text-slate-500 text-sm font-mono">{formatTime(waitTime)}</p>
+            <p className="text-slate-500 text-sm font-mono">{fmt(waitTime)}</p>
             {status === 'searching' && (
               <p className="text-slate-600 text-xs mt-1">
                 Any ELO welcome {'\u2014'} first {maxPlayers} in queue matched
@@ -332,7 +295,6 @@ export default function MatchmakingClient() {
             )}
           </div>
 
-          {/* Pulse dots */}
           {status === 'searching' && (
             <div className="flex justify-center gap-1.5 mb-6">
               {[0, 1, 2].map(i => (
@@ -352,4 +314,4 @@ export default function MatchmakingClient() {
       </div>
     </div>
   )
-  }
+        }
