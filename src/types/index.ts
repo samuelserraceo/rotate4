@@ -4,8 +4,10 @@ export type Board = Cell[][]
 
 export type GameMode =
   | 'competitive_1v1'
+  | 'competitive_3p'
   | 'competitive_4p'
   | 'hosted_1v1'
+  | 'hosted_3p'
   | 'hosted_4p'
 
 export type GameStatus = 'waiting' | 'active' | 'completed' | 'abandoned'
@@ -16,6 +18,7 @@ export interface Profile {
   email?: string
   elo: number
   elo_1v1: number
+  elo_3p: number
   elo_4p: number
   coins: number
   games_played: number
@@ -118,21 +121,23 @@ export interface WinResult {
   winningCells?: [number, number][]
 }
 
-// Economy constants — hosted games give no rewards (handled in game page)
+// Economy constants
 export const COIN_REWARDS = {
   competitive_1v1: { win: 150, loss: 30 },
-  competitive_4p:  { 1: 300, 2: 100, 3: 50,  4: 20 },
+  competitive_3p: { 1: 200, 2: 60, 3: 20 },
+  competitive_4p: { 1: 300, 2: 100, 3: 50, 4: 20 },
 } as const
 
 export const ELO_CONFIG = {
   starting: 1200,
   win_reward: 150,
-  loss_penalty: 100,
+  loss_penalty: 125,
+  win_reward_3p: 175,
+  loss_penalty_3p: 100,
   win_reward_4p: 200,
   loss_penalty_4p: 75,
 } as const
 
-// Symbol → corner position for display
 export const SYMBOL_CORNERS: Record<PlayerSymbol, string> = {
   X: 'bottom-left',
   O: 'top-right',
