@@ -19,7 +19,7 @@ export default function GamePage() {
 
   const [game, setGame]                   = useState<Game | null>(null)
   const [players, setPlayers]             = useState<PlayerWithProfile[]>([])
-  const [myProfile, setMyProfile]         = useState<Profile | null>(null)
+  const [myProfile, setMyProfile]         = useState<Profile | null>(null)h
   const [mySymbol, setMySymbol]           = useState<PlayerSymbol | null>(null)
   const [board, setBoard]                 = useState<Board>(createBoard())
   const [currentTurn, setCurrentTurn]     = useState(0)
@@ -431,7 +431,7 @@ export default function GamePage() {
       }
     } else {
       // Casual (1v1 or 4p)
-      const coins = is1v1 ? COIN_REWARDS.casual_1v1 : COIN_REWARDS.casual_4p
+      const coins = is1v1 ? COIN_REWARDS.competitive_1v1 : COIN_REWARDS.competitive_4p
       for (let i = 0; i < currentPlayers.length; i++) {
         const pl = currentPlayers[i]
         const isWin = pl.profile_id === winnerId
