@@ -9,6 +9,7 @@ type LeaderboardEntry = {
   username: string
   elo: number
   elo_1v1: number
+  elo_3p: number
   elo_4p: number
   games_played: number
   games_won: number
@@ -17,7 +18,7 @@ type LeaderboardEntry = {
 export default function LeaderboardPage() {
   const router = useRouter()
   const supabase = createClient()
-  const [tab, setTab]     = useState<'1v1' | '4p'>('1v1')
+  const [tab, setTab]     = useState<'1v1' | '3p' | '4p'>('1v1')
   const [top, setTop]     = useState<LeaderboardEntry[]>([])
   const [myId, setMyId]   = useState<string | null>(null)
   const [myRank, setMyRank] = useState<number | null>(null)
@@ -32,10 +33,10 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     setLoading(true)
-    const eloCol = tab === '1v1' ? 'elo_1v1' : 'elo_4p'
+    const eloCol = tab === '1v1' ? 'elo_1v1' : tab === '3p' ? 'elo_3p' : 'elo_4p'
     supabase
       .from('profiles')
-      .select('id, username, elo, elo_1v1, elo_4p, games_played, games_won')
+      .select('id, username, elo, elo_1v1, elo_3p, elo_4p, games_played, games_won')
       .order(eloCol, { ascending: false })
       .limit(50)
       .then(({ data }) => {
@@ -70,6 +71,12 @@ export default function LeaderboardPage() {
             ⚔️ 1v1 Competitive
           </button>
           <button
+            onClick={() => setTab('3p')}
+            className={`flex-1 py-3 text-sm font-semibold transition-colors ${tab === '3p' ? 'bg-neon-green/10 text-neon-green' : 'text-slate-500 hover:text-white'}`}
+          >
+            🟢 3-Player Competitive
+          </button>
+          <button
             onClick={() => setTab('4p')}
             className={`flex-1 py-3 text-sm font-semibold transition-colors ${tab === '4p' ? 'bg-neon-purple/10 text-neon-purple' : 'text-slate-500 hover:text-white'}`}
           >
@@ -97,7 +104,7 @@ export default function LeaderboardPage() {
                 <tr className="border-b border-white/5 text-slate-500 text-xs uppercase tracking-wider">
                   <th className="text-left px-4 py-3 w-12">#</th>
                   <th className="text-left px-4 py-3">Player</th>
-                  <th className="text-right px-4 py-3">{tab === '1v1' ? '1v1 ELO' : '4P ELO'}</th>
+                  <th className="text-right px-4 py-3">{tab === '1v1' ? '1v1 ELO' : tab === '3p' ? '3P ELO' : '4P ELO'}</th>
                   <th className="text-right px-4 py-3 hidden sm:table-cell">W/G</th>
                 </tr>
               </thead>
@@ -111,6 +118,8 @@ export default function LeaderboardPage() {
                     : 0
                   const displayElo = tab === '1v1'
                     ? (player.elo_1v1 ?? player.elo)
+                    : tab === '3p'
+                    ? (player.elo_3p ?? player.elo)
                     : (player.elo_4p ?? player.elo)
 
                   return (
