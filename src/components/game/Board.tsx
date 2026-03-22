@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import type { Board, PlayerSymbol, GamePlayer, Profile } from '@/types'
 import { SYMBOL_COLORS } from '@/types'
-import { BOARD_SIZE, getValidLandingRows } from '@/lib/game/board'
+import { getValidLandingRows } from '@/lib/game/board'
 
 interface BoardProps {
   board: Board
@@ -53,6 +53,8 @@ export default function GameBoard({
   const isWinningCell = (row: number, col: number) =>
     winningCells?.some(([r, c]) => r === row && c === col) ?? false
 
+  const boardSize = board.length
+
   return (
     <div className="flex flex-col items-center w-full">
       <div
@@ -65,7 +67,7 @@ export default function GameBoard({
         {/* Drop arrow indicator above hovered column */}
         {canClick && (
           <div className="flex mb-1">
-            {Array.from({ length: BOARD_SIZE }, (_, c) => (
+            {Array.from({ length: boardSize }, (_, c) => (
               <div key={c} className="flex-1 flex justify-center" style={{ minWidth: 0 }}>
                 {hoveredCol === c && hasValidLanding && (
                   <div
@@ -101,6 +103,7 @@ export default function GameBoard({
                     isRecentDrop={isRecentDrop}
                     canClick={canClick && hasValidLanding}
                     mySymbol={mySymbol}
+                    boardSize={boardSize}
                     onClick={() => handleCellClick(rIdx, cIdx)}
                     onMouseEnter={() => canClick && setHoveredCol(cIdx)}
                     onMouseLeave={() => setHoveredCol(null)}
@@ -129,7 +132,7 @@ export default function GameBoard({
   )
 }
 
-// --- Board Cell ---
+// ─── Board Cell ────────────────────────────────────────────────────────────
 
 interface CellProps {
   cell: PlayerSymbol | null
@@ -138,6 +141,7 @@ interface CellProps {
   isRecentDrop: boolean
   canClick: boolean
   mySymbol: PlayerSymbol | null
+  boardSize: number
   onClick: () => void
   onMouseEnter: () => void
   onMouseLeave: () => void
@@ -145,18 +149,21 @@ interface CellProps {
 }
 
 function BoardCell({
-  cell, isWinning, isValidLanding, isRecentDrop, canClick, mySymbol,
+  cell, isWinning, isValidLanding, isRecentDrop, canClick, mySymbol, boardSize,
   onClick, onMouseEnter, onMouseLeave, onTouchStart,
 }: CellProps) {
   const color = cell ? SYMBOL_COLORS[cell].color : undefined
   const glow  = cell ? SYMBOL_COLORS[cell].glow  : undefined
+  // Scale cell size based on board dimensions: 9->52px max, 11->44px max, 13->38px max
+  const maxSize = Math.max(28, Math.floor(52 * 9 / boardSize))
+  const vwSize = Math.floor(75 / boardSize)
 
   return (
     <div
       className={`board-cell ${canClick ? 'clickable' : ''} ${isWinning ? 'winning-cell' : ''}`}
       style={{
-        width:  'clamp(28px, 9vw, 52px)',
-        height: 'clamp(28px, 9vw, 52px)',
+        width:  `clamp(18px, ${vwSize}vw, ${maxSize}px)`,
+        height: `clamp(18px, ${vwSize}vw, ${maxSize}px)`,
         cursor: canClick && isValidLanding ? 'pointer' : canClick ? 'pointer' : 'default',
         background: isValidLanding ? 'rgba(0, 245, 255, 0.05)' : undefined,
       }}
@@ -166,21 +173,22 @@ function BoardCell({
       onTouchStart={onTouchStart}
     >
       {cell && (
-        <GamePiece symbol={cell} color={color!} glow={glow!} winning={isWinning} recentDrop={isRecentDrop} />
+        <GamePiece symbol={cell} color={color!} glow={glow!} winning={isWinning} recentDrop={isRecentDrop} boardSize={boardSize} />
       )}
       {/* Ghost piece at ALL valid landing positions in hovered column */}
       {!cell && isValidLanding && mySymbol && (
-        <GhostPiece symbol={mySymbol} color={SYMBOL_COLORS[mySymbol].color} />
+        <GhostPiece symbol={mySymbol} color={SYMBOL_COLORS[mySymbol].color} boardSize={boardSize} />
       )}
     </div>
   )
 }
 
-// --- Pieces ---
+// ─── Pieces ──────────────────────────────────────────────────────────────────────
 
-function GamePiece({ symbol, color, glow, winning, recentDrop }: {
-  symbol: PlayerSymbol; color: string; glow: string; winning: boolean; recentDrop: boolean
+function GamePiece({ symbol, color, glow, winning, recentDrop, boardSize }: {
+  symbol: PlayerSymbol; color: string; glow: string; winning: boolean; recentDrop: boolean; boardSize: number
 }) {
+  const fontSize = `clamp(8px, ${Math.floor(250 / boardSize)}%, 18px)`
   return (
     <div
       className={`w-4/5 h-4/5 rounded-lg flex items-center justify-center font-bold piece-drop ${winning ? 'scale-110' : ''}`}
@@ -193,7 +201,7 @@ function GamePiece({ symbol, color, glow, winning, recentDrop }: {
             ? `0 0 14px ${glow}cc, 0 0 6px ${glow}66`
             : `0 0 6px ${glow}66`,
         background: recentDrop ? `${color}28` : `${color}15`,
-        fontSize: 'clamp(10px, 3vw, 18px)',
+        fontSize,
         transition: 'box-shadow 0.3s ease, background 0.3s ease',
       }}
     >
@@ -202,7 +210,8 @@ function GamePiece({ symbol, color, glow, winning, recentDrop }: {
   )
 }
 
-function GhostPiece({ symbol, color }: { symbol: PlayerSymbol; color: string }) {
+function GhostPiece({ symbol, color, boardSize }: { symbol: PlayerSymbol; color: string; boardSize: number }) {
+  const fontSize = `clamp(8px, ${Math.floor(250 / boardSize)}%, 18px)`
   return (
     <div
       className="w-4/5 h-4/5 rounded-lg flex items-center justify-center font-bold"
@@ -210,7 +219,7 @@ function GhostPiece({ symbol, color }: { symbol: PlayerSymbol; color: string }) 
         color: `${color}70`,
         border: `2px dashed ${color}50`,
         background: `${color}08`,
-        fontSize: 'clamp(10px, 3vw, 18px)',
+        fontSize,
       }}
     >
       {symbol}
@@ -218,7 +227,7 @@ function GhostPiece({ symbol, color }: { symbol: PlayerSymbol; color: string }) 
   )
 }
 
-// --- Player Corners ---
+// ─── Player Corners ──────────────────────────────────────────────────────────────
 
 function PlayerCorners({ players, currentSymbol, mySymbol }: {
   players: (GamePlayer & { profiles?: Profile })[]
@@ -265,7 +274,7 @@ function PlayerCorners({ players, currentSymbol, mySymbol }: {
   )
 }
 
-// --- Turn Indicator ---
+// ─── Turn Indicator ────────────────────────────────────────────────────────────────
 
 function TurnIndicator({ currentSymbol, mySymbol, players, gameOver, isRotating }: {
   currentSymbol: PlayerSymbol | null
@@ -292,7 +301,7 @@ function TurnIndicator({ currentSymbol, mySymbol, players, gameOver, isRotating 
         <div>
           <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">Current Turn</p>
           <p className="font-bold text-lg" style={{ color, textShadow: `0 0 10px ${color}66` }}>
-            {isMe ? `${'\u26A1'} Your Turn!` : `${player?.profiles?.username ?? currentSymbol}'s Turn`}
+            {isMe ? `{'\u26A1'} Your Turn!` : `${player?.profiles?.username ?? currentSymbol}'s Turn`}
           </p>
         </div>
       )}
