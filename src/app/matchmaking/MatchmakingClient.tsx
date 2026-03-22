@@ -13,7 +13,7 @@ const SYMBOL_COLORS: Record<string, string> = {
 }
 
 const SYMBOLS = ['X', 'O', 'W', 'M']
-const STALE_MS = 2 * 60 * 1000 // 2 minutes — filter ghost entries
+const STALE_MS = 2 * 60 * 1000 // 2 minutes
 
 export default function MatchmakingClient() {
   const router = useRouter()
@@ -34,7 +34,7 @@ export default function MatchmakingClient() {
   const queueEnteredAt = useRef(new Date().toISOString())
   const userIdRef = useRef<string | null>(null)
   const gameIdRef = useRef<string | null>(null)
-  const creatingRef = useRef(false) // prevents double-create on same client
+  const creatingRef = useRef(false)
 
   const maxPlayers = mode === '4p' ? 4 : mode === '3p' ? 3 : 2
   const modeLabel = mode === '4p' ? '4-Player' : mode === '3p' ? '3-Player' : '1v1'
@@ -101,16 +101,16 @@ export default function MatchmakingClient() {
   }, [])
 
   const checkForMatch = async (userId: string) => {
-    // Step 1: Already placed in a game by another player?
+    // Step 1: Check if already placed in an active game (another player created it for me)
     const { data: myGamePlayer } = await supabase
       .from('game_players')
-      .select('game_id, games(id, status, created_at)')
+      .select('game_id, games(id, status, mode, created_at)')
       .eq('profile_id', userId)
       .order('id', { ascending: false })
       .limit(1)
       .maybeSingle()
 
-    const gameData = myGamePlayer?.games as { id: string; status: string; created_at: string } | undefined
+    const gameData = myGamePlayer?.games as { id: string; status: string; mode: string; created_at: string } | undefined
     if (myGamePlayer && gameData?.status === 'active' && gameData?.created_at >= queueEnteredAt.current) {
       if (matchCheckRef.current) clearInterval(matchCheckRef.current)
       await supabase.from('matchmaking_queue').delete().eq('profile_id', userId)
@@ -127,7 +127,7 @@ export default function MatchmakingClient() {
       return
     }
 
-    // Step 2: Fetch queue
+    // Step 2: Fetch current queue for this mode
     const { data: allQueue } = await supabase
       .from('matchmaking_queue')
       .select('*, profiles(id, username, elo, elo_1v1, elo_3p, elo_4p)')
@@ -138,50 +138,76 @@ export default function MatchmakingClient() {
 
     if (!allQueue) return
 
-    // Step 3: Filter ghost entries older than 2 minutes
+    // Step 3: Filter out stale ghost entries (>2 min old)
     const staleThreshold = new Date(Date.now() - STALE_MS).toISOString()
     const freshQueue = allQueue.filter(q => q.joined_at > staleThreshold)
 
     if (freshQueue.length < maxPlayers) return
 
-    const me = freshQueue.find(q => q.profile_id === userId)
-    if (!me) return
+    // Step 3b: Filter out candidates already in active/waiting games
+    const candidateIds = freshQueue.slice(0, Math.min(freshQueue.length, 20)).map(q => q.profile_id)
+    const { data: gpRows } = await supabase
+      .from('game_players')
+      .select('profile_id, games(id, status)')
+      .in('profile_id', candidateIds)
+      .order('id', { ascending: false })
 
-    const matchedQueue = freshQueue.slice(0, maxPlayers)
-    if (!matchedQueue.find(q => q.profile_id === userId)) return
+    const busyPlayers = new Set<string>()
+    const seenPlayers = new Set<string>()
+    for (const row of gpRows ?? []) {
+      if (seenPlayers.has(row.profile_id)) continue
+      seenPlayers.add(row.profile_id)
+      const s = (row.games as any)?.status
+      if (s === 'active' || s === 'waiting') {
+        busyPlayers.add(row.profile_id)
+      }
+    }
 
-    // ONLY the oldest player in the matched set creates the game — no exceptions, no takeover.
-    // This prevents the race condition where two players simultaneously create duplicate games.
-    if (matchedQueue[0].profile_id !== userId) return
+    // Clean up stale queue entries for busy players in background
+    const stalePlayerIds = candidateIds.filter(id => busyPlayers.has(id))
+    if (stalePlayerIds.length > 0) {
+      supabase.from('matchmaking_queue').delete().in('profile_id', stalePlayerIds).then(() => {})
+    }
 
-    // Guard: prevent this client from creating twice if the interval fires again before we finish
+    // Only consider players not already in a game
+    const validQueue = freshQueue.filter(q => !busyPlayers.has(q.profile_id))
+
+    if (validQueue.length < maxPlayers) return
+
+    const amIOldest = validQueue[0].profile_id === userId
+    if (!amIOldest) return
+
+    // Step 4: I am the oldest — prevent double-create
     if (creatingRef.current) return
     creatingRef.current = true
 
+    // Step 5: Create the game
     if (matchCheckRef.current) clearInterval(matchCheckRef.current)
 
-    // Step 4: Create the game
+    const matchedQueue = validQueue.slice(0, maxPlayers)
     const fullMode = `competitive_${mode}` as const
-    const { data: game, error: gameError } = await supabase.from('games').insert({
+    const { data: game } = await supabase.from('games').insert({
       mode: fullMode,
       max_players: maxPlayers,
       status: 'active',
     }).select().single()
 
-    if (gameError || !game) {
+    if (!game) {
       creatingRef.current = false
       matchCheckRef.current = setInterval(() => checkForMatch(userId), 2000)
       return
     }
 
-    // Step 5: Build all game_players rows and insert as a SINGLE BATCH (atomic)
+    // Step 6: Batch insert all game_players at once (atomic)
+    const playersList: { username: string; symbol: string }[] = []
     const rows = matchedQueue.map((qp, i) => {
-      const prof = qp.profiles as { elo_1v1?: number; elo_3p?: number; elo_4p?: number; elo?: number } | null
+      const prof = qp.profiles as { elo_1v1?: number; elo_3p?: number; elo_4p?: number; elo?: number; username?: string } | null
       const eloBefore = mode === '1v1'
         ? (prof?.elo_1v1 ?? qp.elo ?? 1200)
         : mode === '3p'
           ? (prof?.elo_3p ?? qp.elo ?? 1200)
           : (prof?.elo_4p ?? qp.elo ?? 1200)
+      playersList.push({ username: prof?.username ?? '?', symbol: SYMBOLS[i] })
       return {
         game_id: game.id,
         profile_id: qp.profile_id,
@@ -191,24 +217,17 @@ export default function MatchmakingClient() {
       }
     })
 
-    const { error: insertError } = await supabase.from('game_players').insert(rows)
-
-    if (insertError) {
-      // Rollback — clean up the orphaned game and re-enter the queue
+    const { error: insertErr } = await supabase.from('game_players').insert(rows)
+    if (insertErr) {
       await supabase.from('games').delete().eq('id', game.id)
       creatingRef.current = false
       matchCheckRef.current = setInterval(() => checkForMatch(userId), 2000)
       return
     }
 
-    // Step 6: Remove ALL matched players from queue in one call
+    // Step 7: Batch delete matched players from queue
     const matchedIds = matchedQueue.map(q => q.profile_id)
     await supabase.from('matchmaking_queue').delete().in('profile_id', matchedIds)
-
-    const playersList = matchedQueue.map((qp, i) => ({
-      username: (qp.profiles as any)?.username ?? '?',
-      symbol: SYMBOLS[i],
-    }))
 
     if (mounted.current) startCountdown(game.id, playersList)
   }
@@ -226,7 +245,7 @@ export default function MatchmakingClient() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-        <button onClick={cancelMatchmaking} className="btn-ghost text-sm">{String.fromCharCode(8592)} Lobby</button>
+        <button onClick={cancelMatchmaking} className="btn-ghost text-sm">{'\u2190'} Lobby</button>
         <div className="text-center">
           <span className="text-neon-cyan text-glow-cyan font-bold text-lg">ROTATE</span>
           <span className="text-neon-purple text-glow-purple font-bold text-lg">4</span>
@@ -237,26 +256,29 @@ export default function MatchmakingClient() {
       <div className="flex-1 flex flex-col items-center justify-center px-4">
         <div className="card w-full max-w-sm">
 
+          {/* Title */}
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-base font-bold text-white">
               {status === 'found'
                 ? countdown !== null && countdown > 0
-                  ? `Match found! Starting in ${countdown}…`
-                  : 'Match found! Loading…'
-                : 'Searching for players…'}
+                  ? `Match found! Starting in ${countdown}\u2026`
+                  : 'Match found! Loading\u2026'
+                : 'Searching for players\u2026'}
             </h2>
             <div className={`w-2.5 h-2.5 rounded-full ${status === 'found' ? 'bg-neon-green animate-pulse' : 'bg-neon-cyan animate-pulse'}`} />
           </div>
 
+          {/* Mode badges */}
           <div className="flex gap-2 mb-5">
             <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">
-              {String.fromCharCode(9876)+String.fromCharCode(65039)} Ranked
+              {'\u2694\uFE0F'} Ranked
             </span>
             <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">
               {modeLabel}
             </span>
           </div>
 
+          {/* Player slots */}
           <div className="flex gap-2 mb-5">
             {Array.from({ length: maxPlayers }, (_, i) => {
               const fp = foundPlayers[i]
@@ -278,13 +300,14 @@ export default function MatchmakingClient() {
                     {isFilled ? sym : '?'}
                   </span>
                   <span className="text-xs truncate max-w-full px-1 text-center" style={{ color: isFilled ? `${color}80` : '#1e293b' }}>
-                    {isFilled ? (isMe ? 'You' : (name ?? '···')) : '···'}
+                    {isFilled ? (isMe ? 'You' : (name ?? '\u00B7\u00B7\u00B7')) : '\u00B7\u00B7\u00B7'}
                   </span>
                 </div>
               )
             })}
           </div>
 
+          {/* Countdown bar */}
           {status === 'found' && countdown !== null && (
             <div className="mb-5">
               <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
@@ -299,15 +322,17 @@ export default function MatchmakingClient() {
             </div>
           )}
 
+          {/* Timer + info */}
           <div className="mb-6 text-center">
             <p className="text-slate-500 text-sm font-mono">{formatTime(waitTime)}</p>
             {status === 'searching' && (
               <p className="text-slate-600 text-xs mt-1">
-                Any ELO welcome — first {maxPlayers} in queue matched
+                Any ELO welcome {'\u2014'} first {maxPlayers} in queue matched
               </p>
             )}
           </div>
 
+          {/* Pulse dots */}
           {status === 'searching' && (
             <div className="flex justify-center gap-1.5 mb-6">
               {[0, 1, 2].map(i => (
@@ -321,10 +346,10 @@ export default function MatchmakingClient() {
             className="btn-ghost w-full text-sm text-red-400 hover:text-red-300 border-red-500/20 hover:border-red-500/40"
             disabled={status === 'found'}
           >
-            {status === 'found' ? '✓ Match found' : '✕ Cancel'}
+            {status === 'found' ? '\u2713 Match found' : '\u2715 Cancel'}
           </button>
         </div>
       </div>
     </div>
   )
-        }
+  }
