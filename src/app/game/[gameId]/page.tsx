@@ -117,7 +117,7 @@ export default function GamePage() {
 
       if (mountedRef.current) {
         setGame(gameData); gameRef.current = gameData
-        setBoard(gameData.board_state ?? createBoard())
+        setBoard(gameData.board_state ?? createBoard(gameData.max_players === 4 ? 13 : gameData.max_players === 3 ? 11 : 9))
         setCurrentTurn(gameData.current_turn_index ?? 0)
         currentTurnRef.current = gameData.current_turn_index ?? 0
         const rc = gameData.rotation_count ?? 0
@@ -162,13 +162,13 @@ export default function GamePage() {
           setTimeout(() => {
             if (!mountedRef.current) return
             setIsRotating(false)
-            setBoard(pendingBoardRef.current ?? createBoard())
+            setBoard(pendingBoardRef.current ?? createBoard(gameRef.current?.max_players === 4 ? 13 : gameRef.current?.max_players === 3 ? 11 : 9))
             pendingBoardRef.current = null
           }, 450)
         } else {
           rotationCountRef.current = newRotCount
           setRotationCount(newRotCount)
-          setBoard(g.board_state ?? createBoard())
+          setBoard(g.board_state ?? createBoard(g.max_players === 4 ? 13 : g.max_players === 3 ? 11 : 9))
         }
 
         if ((g.status === 'completed' || g.status === 'abandoned') && !winStateRef.current) {
@@ -345,6 +345,7 @@ export default function GamePage() {
 
     const isComp = game.mode.startsWith('competitive')
     const is1v1  = game.mode.endsWith('1v1')
+    const is3p   = game.mode.endsWith('3p')
     const currentPlayers = playersRef.current
 
     const profileIds = currentPlayers.map(p => p.profile_id)
@@ -386,7 +387,28 @@ export default function GamePage() {
         coins_earned: applyMultiplier(coins.loss), placement: 2,
       }).eq('game_id', gameId).eq('profile_id', lP.id)
 
-    } else if (isComp && !is1v1 && winnerId) {
+    } else if (isComp && is3p && winnerId) {
+      // Competitive 3P
+      const coins3p: Record<number,number> = { 1: 200, 2: 60, 3: 20 }
+      for (let i = 0; i < currentPlayers.length; i++) {
+        const pl = currentPlayers[i]
+        const p = profileMap[pl.profile_id]
+        const pElo = (p as any).elo_3p ?? p.elo ?? 0
+        const isWin = pl.profile_id === winnerId
+        const placement = isWin ? 1 : i + 1
+        const earned = coins3p[Math.min(placement, 3)] ?? 20
+        const eloChange = isWin ? ELO_CONFIG.win_reward_3p : -ELO_CONFIG.loss_penalty_3p
+        const newElo = Math.max(0, pElo + eloChange)
+        await supabase.from('profiles').update({
+          elo_3p: newElo, coins: p.coins + earned,
+          games_played: p.games_played + 1, games_won: isWin ? p.games_won + 1 : p.games_won,
+        }).eq('id', p.id)
+        await supabase.from('game_players').update({
+          elo_before: pElo, elo_after: newElo, elo_change: eloChange,
+          coins_earned: earned, placement,
+        }).eq('game_id', gameId).eq('profile_id', p.id)
+      }
+    } else if (isComp && !is1v1 && !is3p && winnerId) {
       const coins = COIN_REWARDS.competitive_4p
       for (let i = 0; i < currentPlayers.length; i++) {
         const pl = currentPlayers[i]
@@ -448,6 +470,7 @@ export default function GamePage() {
     if (!profile || !game) { router.push('/'); return }
     if (game.host_id || game.mode.startsWith('hosted')) { router.push('/'); return }
     const is1v1 = game.mode.endsWith('1v1')
+    const is3p  = game.mode.endsWith('3p')
     if (is1v1 && currentPlayers.length === 2) {
       const opponent = currentPlayers.find(p => p.profile_id !== profile.id)
       if (opponent) {
@@ -458,7 +481,20 @@ export default function GamePage() {
           completed_at: new Date().toISOString(),
         }).eq('id', game.id)
       }
-    } else if (!is1v1 && currentPlayers.length > 0) {
+    } else if (is3p && currentPlayers.length > 0) {
+      const { data: fp3 } = await supabase.from('profiles').select('*').eq('id', profile.id)
+      const p3 = fp3?.[0]
+      if (p3) {
+        const pElo3 = (p3 as any).elo_3p ?? p3.elo ?? 0
+        const eloChange3 = -ELO_CONFIG.loss_penalty_3p
+        const newElo3 = Math.max(0, pElo3 + eloChange3)
+        await supabase.from('profiles').update({ elo_3p: newElo3 }).eq('id', p3.id)
+        await supabase.from('game_players').update({
+          elo_change: eloChange3, placement: currentPlayers.length,
+        }).eq('game_id', game.id).eq('profile_id', p3.id)
+      }
+      await supabase.from('games').update({ status: 'abandoned', completed_at: new Date().toISOString() }).eq('id', game.id)
+    } else if (!is1v1 && !is3p && currentPlayers.length > 0) {
       const { data: fp } = await supabase.from('profiles').select('*').eq('id', profile.id)
       const p = fp?.[0]
       if (p) {
