@@ -19,7 +19,7 @@ export default function LobbyPage() {
   const [eloTab, setEloTab]         = useState<'1v1' | '3p' | '4p'>('1v1')
   const [loading, setLoading]       = useState(true)
 
-  useEffect(() => {h
+  useEffect(() => {
     let mounted = true
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
