@@ -19,7 +19,7 @@ export default function LobbyPage() {
   const [eloTab, setEloTab]         = useState<'1v1' | '3p' | '4p'>('1v1')
   const [loading, setLoading]       = useState(true)
 
-  useEffect(() => {
+  useEffect(() => {h
     let mounted = true
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
@@ -252,19 +252,19 @@ export default function LobbyPage() {
               <div className="grid grid-cols-3 gap-2">
                 <button onClick={() => enterMatchmaking('1v1')}
                   className="card border-neon-cyan/10 hover:border-neon-cyan/30 transition-all text-center py-4 group">
-                  <p className="text-xl mb-1">\u2694\uFE0F</p>
+                  <p className="text-xl mb-1">⚔️</p>
                   <p className="font-semibold text-slate-200 group-hover:text-neon-cyan transition-colors text-xs">1v1 Ranked</p>
                   <p className="text-xs text-slate-500 mt-0.5">ELO match</p>
                 </button>
                 <button onClick={() => enterMatchmaking('3p')}
                   className="card border-neon-green/10 hover:border-neon-green/30 transition-all text-center py-4 group">
-                  <p className="text-xl mb-1">\u26A1</p>
+                  <p className="text-xl mb-1">⚡</p>
                   <p className="font-semibold text-slate-200 group-hover:text-neon-green transition-colors text-xs">3P Ranked</p>
                   <p className="text-xs text-slate-500 mt-0.5">ELO match</p>
                 </button>
                 <button onClick={() => enterMatchmaking('4p')}
                   className="card border-neon-purple/10 hover:border-neon-purple/30 transition-all text-center py-4 group">
-                  <p className="text-xl mb-1">\u{1F3DF}\uFE0F</p>
+                  <p className="text-xl mb-1">🏟️</p>
                   <p className="font-semibold text-slate-200 group-hover:text-neon-purple transition-colors text-xs">4P Ranked</p>
                   <p className="text-xs text-slate-500 mt-0.5">ELO match</p>
                 </button>
@@ -277,17 +277,17 @@ export default function LobbyPage() {
               <div className="grid grid-cols-3 gap-2">
                 <button onClick={() => createHostedGame('hosted_1v1')}
                   className="card border-white/5 hover:border-white/20 transition-all text-center py-3 group">
-                  <p className="text-lg mb-1">\u{1F3E0}</p>
+                  <p className="text-lg mb-1">🏠</p>
                   <p className="font-semibold text-slate-300 group-hover:text-white transition-colors text-xs">Host 1v1</p>
                 </button>
                 <button onClick={() => createHostedGame('hosted_3p')}
                   className="card border-white/5 hover:border-white/20 transition-all text-center py-3 group">
-                  <p className="text-lg mb-1">\u{1F3E0}</p>
+                  <p className="text-lg mb-1">🏠</p>
                   <p className="font-semibold text-slate-300 group-hover:text-white transition-colors text-xs">Host 3P</p>
                 </button>
                 <button onClick={() => createHostedGame('hosted_4p')}
                   className="card border-white/5 hover:border-white/20 transition-all text-center py-3 group">
-                  <p className="text-lg mb-1">\u{1F3E0}</p>
+                  <p className="text-lg mb-1">🏠</p>
                   <p className="font-semibold text-slate-300 group-hover:text-white transition-colors text-xs">Host 4P</p>
                 </button>
               </div>
@@ -311,7 +311,7 @@ export default function LobbyPage() {
             {/* Ranks */}
             <button onClick={() => router.push('/ranks')}
               className="card border-yellow-500/10 hover:border-yellow-500/30 transition-all text-center py-4 group w-full">
-              <p className="text-2xl mb-1">\u{1F3C6}</p>
+              <p className="text-2xl mb-1">🏆</p>
               <p className="font-semibold text-slate-200 group-hover:text-yellow-400 transition-colors text-sm">View Ranks</p>
               <p className="text-xs text-slate-500 mt-1">See the rank road</p>
             </button>
@@ -330,15 +330,15 @@ export default function LobbyPage() {
                     <button
                       onClick={() => setEloTab('1v1')}
                       className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${eloTab === '1v1' ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-slate-600 hover:text-slate-400'}`}
-                    >\u2694\uFE0F 1v1</button>
+                    >⚔️ 1v1</button>
                     <button
                       onClick={() => setEloTab('3p')}
                       className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${eloTab === '3p' ? 'bg-neon-green/10 text-neon-green' : 'text-slate-600 hover:text-slate-400'}`}
-                    >\u26A1 3P</button>
+                    >⚡ 3P</button>
                     <button
                       onClick={() => setEloTab('4p')}
                       className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${eloTab === '4p' ? 'bg-neon-purple/10 text-neon-purple' : 'text-slate-600 hover:text-slate-400'}`}
-                    >\u{1F3DF}\uFE0F 4P</button>
+                    >🏟️ 4P</button>
                   </div>
                   <div className="flex items-center gap-3">
                     <div
@@ -378,7 +378,7 @@ export default function LobbyPage() {
                 onClick={() => router.push('/leaderboard')}
                 className="card border-neon-amber/10 hover:border-neon-amber/30 transition-all text-center py-5 group"
               >
-                <p className="text-3xl mb-2">\u{1F3C6}</p>
+                <p className="text-3xl mb-2">🏆</p>
                 <p className="font-semibold text-slate-200 group-hover:text-neon-amber transition-colors">Leaderboard</p>
                 <p className="text-xs text-slate-500 mt-1">Top ranked players</p>
               </button>
@@ -386,7 +386,7 @@ export default function LobbyPage() {
                 onClick={() => router.push('/shop')}
                 className="card border-neon-green/10 hover:border-neon-green/30 transition-all text-center py-5 group"
               >
-                <p className="text-3xl mb-2">\u{1F3A8}</p>
+                <p className="text-3xl mb-2">🎨</p>
                 <p className="font-semibold text-slate-200 group-hover:text-neon-green transition-colors">Shop</p>
                 <p className="text-xs text-slate-500 mt-1">Skins &amp; cosmetics</p>
               </button>
@@ -402,7 +402,7 @@ export default function LobbyPage() {
               <div className="flex gap-2">
                 <input
                   className="input flex-1"
-                  placeholder="Enter username\u2026"
+                  placeholder="Enter username…"
                   value={friendRequest}
                   onChange={e => setFriendRequest(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && sendFriendRequest()}
