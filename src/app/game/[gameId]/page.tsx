@@ -246,7 +246,7 @@ export default function GamePage() {
   }, [gameId, supabase])
 
   // ââ Drop a piece ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-  const handleColumnClick = useCallback(async (col: number) => {
+  const handleCellClick = useCallback(async (row: number, col: number) => {
     const myProfile = myProfileRef.current
     const game = gameRef.current
     const currentPlayers = playersRef.current
@@ -257,7 +257,7 @@ export default function GamePage() {
 
     processingMove.current = true
 
-    const result = dropPiece(board, col, mySymbol)
+    const result = dropPiece(board, col, mySymbol, row)
     if (!result.isValid) { processingMove.current = false; return }
 
     // Immediate local update â show piece before DB round-trip
@@ -573,7 +573,7 @@ export default function GamePage() {
         </div>
         <div className="text-xs text-slate-500 text-right">
           <p>{game?.mode.replace(/_/g, ' ').toUpperCase()}</p>
-          {rotationCount > 0 && <p className="text-neon-amber">â» Ã{rotationCount}</p>}
+          {rotationCount > 0 && <p className="text-neon-amber">{'\u21BB'} {'\u00D7'}{rotationCount}</p>}
         </div>
       </header>
 
@@ -585,8 +585,9 @@ export default function GamePage() {
           mySymbol={mySymbol}
           winningCells={winningCells}
           isRotating={isRotating}
-          onColumnClick={handleColumnClick}
+          onCellClick={handleCellClick}
           disabled={!gameActive || !isMyTurn}
+          gameOver={!gameActive}
           recentDrop={lastDrop}
         />
       </div>
