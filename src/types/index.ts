@@ -121,17 +121,16 @@ export interface WinResult {
   winningCells?: [number, number][]
 }
 
-// Economy constants
 export const COIN_REWARDS = {
   competitive_1v1: { win: 150, loss: 30 },
-  competitive_3p: { 1: 200, 2: 60, 3: 20 },
-  competitive_4p: { 1: 300, 2: 100, 3: 50, 4: 20 },
+  competitive_3p:  { 1: 200, 2: 60,  3: 20 },
+  competitive_4p:  { 1: 300, 2: 100, 3: 50, 4: 20 },
 } as const
 
 export const ELO_CONFIG = {
   starting: 1200,
   win_reward: 150,
-  loss_penalty: 125,
+  loss_penalty: 100,
   win_reward_3p: 175,
   loss_penalty_3p: 100,
   win_reward_4p: 200,
@@ -148,6 +147,6 @@ export const SYMBOL_CORNERS: Record<PlayerSymbol, string> = {
 export const SYMBOL_COLORS: Record<PlayerSymbol, { color: string; glow: string }> = {
   X: { color: '#00f5ff', glow: '#00f5ff' },
   O: { color: '#a855f7', glow: '#a855f7' },
-  W: { color: '#f97316', glow: '#f97316' },
-  M: { color: '#22c55e', glow: '#22c55e' },
+  W: { color: '#10b981', glow: '#10b981' },
+  M: { color: '#f59e0b', glow: '#f59e0b' },
 }
