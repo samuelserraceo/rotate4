@@ -59,7 +59,7 @@ export default function GamePage() {
   useEffect(() => { gameRef.current = game }, [game])
   useEffect(() => { currentTurnRef.current = currentTurn }, [currentTurn])
 
-  // ââ 30-second turn timer ââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // \u2500\u2500 30-second turn timer \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   useEffect(() => {
     if (!game || game.status !== 'active' || isRotating) return
 
@@ -76,7 +76,6 @@ export default function GamePage() {
             const currentPlayers = playersRef.current
             if (currentPlayers.length === 0) return 0
             const nextTurn = (currentTurnRef.current + 1) % currentPlayers.length
-            // Conditional update: only advances if turn hasn't already changed
             supabase.from('games').update({ current_turn_index: nextTurn })
               .eq('id', gameId)
               .eq('current_turn_index', currentTurnRef.current)
@@ -94,7 +93,7 @@ export default function GamePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTurn, game?.status, isRotating])
 
-  // ââ Init + subscribe ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // \u2500\u2500 Init + subscribe \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   useEffect(() => {
     mountedRef.current = true
 
@@ -108,7 +107,6 @@ export default function GamePage() {
       const { data: gameData } = await supabase.from('games').select('*').eq('id', gameId).single()
       if (!gameData) { setError('Game not found.'); setLoading(false); return }
 
-      // If game is already completed when we join, show win modal or redirect
       if (gameData.status === 'completed' || gameData.status === 'abandoned') {
         setError('This game has already ended.')
         setLoading(false)
@@ -117,7 +115,7 @@ export default function GamePage() {
 
       if (mountedRef.current) {
         setGame(gameData); gameRef.current = gameData
-        setBoard(gameData.board_state ?? createBoard(gameData.max_players === 4 ? 13 : gameData.max_players === 3 ? 11 : 9))
+        setBoard(gameData.board_state ?? createBoard())
         setCurrentTurn(gameData.current_turn_index ?? 0)
         currentTurnRef.current = gameData.current_turn_index ?? 0
         const rc = gameData.rotation_count ?? 0
@@ -140,7 +138,6 @@ export default function GamePage() {
     init()
 
     const channel = supabase.channel(`game:${gameId}`)
-      // Game state updates
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}`,
       }, (payload) => {
@@ -154,28 +151,27 @@ export default function GamePage() {
         const newRotCount = g.rotation_count ?? 0
 
         if (newRotCount > rotationCountRef.current) {
-          // Rotation happened â animate on OLD board, then switch to new board
           rotationCountRef.current = newRotCount
           setRotationCount(newRotCount)
           pendingBoardRef.current = g.board_state
           setIsRotating(true)
+
           setTimeout(() => {
             if (!mountedRef.current) return
             setIsRotating(false)
-            setBoard(pendingBoardRef.current ?? createBoard(gameRef.current?.max_players === 4 ? 13 : gameRef.current?.max_players === 3 ? 11 : 9))
+            setBoard(pendingBoardRef.current ?? createBoard())
             pendingBoardRef.current = null
           }, 450)
         } else {
           rotationCountRef.current = newRotCount
           setRotationCount(newRotCount)
-          setBoard(g.board_state ?? createBoard(g.max_players === 4 ? 13 : g.max_players === 3 ? 11 : 9))
+          setBoard(g.board_state ?? createBoard())
         }
 
         if ((g.status === 'completed' || g.status === 'abandoned') && !winStateRef.current) {
           handleGameEnd(g)
         }
       })
-      // New player joined waiting room
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'game_players', filter: `game_id=eq.${gameId}`,
       }, async () => {
@@ -195,7 +191,34 @@ export default function GamePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId])
 
-  // ââ Handle game end âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // \u2500\u2500 Handle game end \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  useCallback(function handleGameEnd(g: Game) {
+    if (winStateRef.current) return
+    winStateRef.current = true
+
+    const myProf = myProfileRef.current
+    const currentPlayers = playersRef.current
+    const winnerId = g.winner_id
+
+    const is1v1 = g.mode === 'competitive_1v1'
+    const is3p = g.mode === 'competitive_3p'
+    const is4p = g.mode === 'competitive_4p'
+
+    if (g.status === 'abandoned') {
+      setWinState({ winner: null, winnerUsername: '', isMe: false, coinsEarned: 0, isDraw: true })
+      return
+    }
+
+    if (!myProf || currentPlayers.length === 0) return
+
+    const profileMap: Record<string, Profile> = {}
+    for (const pl of currentPlayers) {
+      if (pl.profiles) profileMap[pl.profile_id] = pl.profiles as Profile
+    }
+
+    async function distributeRewards() {
+      if (is1v1 && winnerId) {
+u2500\u2500\u2500\u2500\u2500\u2500\u2500
   const handleGameEnd = useCallback(async (finishedGame: Game) => {
     if (winStateRef.current) return
     winStateRef.current = true
@@ -203,7 +226,6 @@ export default function GamePage() {
     const profile = myProfileRef.current
     if (!profile) return
 
-    // Wait briefly for reward distribution to complete
     await new Promise(r => setTimeout(r, 600))
 
     const { data: gamePlayers } = await supabase
@@ -245,7 +267,7 @@ export default function GamePage() {
     }
   }, [gameId, supabase])
 
-  // ââ Drop a piece ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // \u2500\u2500 Drop a piece \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   const handleCellClick = useCallback(async (row: number, col: number) => {
     const myProfile = myProfileRef.current
     const game = gameRef.current
@@ -260,7 +282,6 @@ export default function GamePage() {
     const result = dropPiece(board, col, mySymbol, row)
     if (!result.isValid) { processingMove.current = false; return }
 
-    // Immediate local update â show piece before DB round-trip
     setBoard(result.newBoard)
     setLastDrop({ row: result.rowLanded, col })
 
@@ -268,7 +289,6 @@ export default function GamePage() {
     let newRotationCount = rotationCountRef.current
     const causedRotation = result.causedRotation
 
-    // Check win before rotation
     const winBefore = checkWin(finalBoard, mySymbol)
     if (winBefore.hasWon) {
       setWinningCells(winBefore.winningCells ?? null)
@@ -277,10 +297,23 @@ export default function GamePage() {
       return
     }
 
-    // Apply rotation (subscription will handle the animation)
     if (causedRotation) {
       newRotationCount += 1
-      finalBoard = rotateBoard(finalBoard)
+      finalBoard = rotateBoard(result.newBoard)
+
+      setIsRotating(true)
+      rotationCountRef.current = newRotationCount
+      setRotationCount(newRotationCount)
+
+      await new Promise<void>((resolve) => {
+        setTimeout(() => {
+          if (!mountedRef.current) { resolve(); return }
+          setIsRotating(false)
+          setBoard(finalBoard)
+          resolve()
+        }, 450)
+      })
+
       const winAfter = checkWin(finalBoard, mySymbol)
       if (winAfter.hasWon) {
         setWinningCells(winAfter.winningCells ?? null)
@@ -312,7 +345,8 @@ export default function GamePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board, mySymbol, gameId, supabase])
 
-  // ââ Finalize game (win/draw) ââââââââââââââââââââââââââââââââââââââââââââââââ
+
+  // \u2500\u2500 Finalize game \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   const finalizeGame = useCallback(async (
     finalBoard: Board,
     winnerId: string,
@@ -320,7 +354,6 @@ export default function GamePage() {
     causedRot: boolean,
     isWin: boolean,
   ) => {
-    // Distribute rewards FIRST so they're ready when subscription fires
     await distributeRewards(isWin ? winnerId : null)
 
     await supabase.from('games').update({
@@ -333,7 +366,7 @@ export default function GamePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId, supabase])
 
-  // ââ Distribute rewards ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // \u2500\u2500 Distribute rewards \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   const distributeRewards = useCallback(async (
     winnerId: string | null,
   ) => {
@@ -341,11 +374,10 @@ export default function GamePage() {
     if (!game) return
 
     // Hosted games â no rewards
-    if (game.host_id) return
+    if (game.host_id || game.mode.startsWith('hosted')) return
 
-    const isComp = game.mode.startsWith('competitive')
-    const is1v1  = game.mode.endsWith('1v1')
-    const is3p   = game.mode.endsWith('3p')
+    const is1v1 = game.mode === 'competitive_1v1'
+    const is3p  = game.mode === 'competitive_3p'
     const currentPlayers = playersRef.current
 
     const profileIds = currentPlayers.map(p => p.profile_id)
@@ -354,9 +386,8 @@ export default function GamePage() {
 
     const profileMap = Object.fromEntries(freshProfiles.map((p: Profile) => [p.id, p]))
 
-    const applyMultiplier = (v: number) => Math.round(v * 1.0)
-
-    if (isComp && is1v1 && winnerId && currentPlayers.length === 2) {
+    if (is1v1 && winnerId && currentPlayers.length === 2) {
+      // Competitive 1v1 â ELO + coins
       const winnerPlayer = currentPlayers.find(p => p.profile_id === winnerId)!
       const loserPlayer  = currentPlayers.find(p => p.profile_id !== winnerId)!
       const wP = profileMap[winnerPlayer.profile_id]
@@ -370,33 +401,34 @@ export default function GamePage() {
       const coins = COIN_REWARDS.competitive_1v1
 
       await supabase.from('profiles').update({
-        elo_1v1: newWElo, coins: wP.coins + applyMultiplier(coins.win),
+        elo_1v1: newWElo, coins: wP.coins + coins.win,
         games_played: wP.games_played + 1, games_won: wP.games_won + 1,
       }).eq('id', wP.id)
       await supabase.from('game_players').update({
-        elo_before: wElo, elo_after: newWElo, elo_change: applyMultiplier(wChange),
-        coins_earned: applyMultiplier(coins.win), placement: 1,
+        elo_before: wElo, elo_after: newWElo, elo_change: wChange,
+        coins_earned: coins.win, placement: 1,
       }).eq('game_id', gameId).eq('profile_id', wP.id)
 
       await supabase.from('profiles').update({
-        elo_1v1: newLElo, coins: lP.coins + applyMultiplier(coins.loss),
+        elo_1v1: newLElo, coins: lP.coins + coins.loss,
         games_played: lP.games_played + 1,
       }).eq('id', lP.id)
       await supabase.from('game_players').update({
-        elo_before: lElo, elo_after: newLElo, elo_change: applyMultiplier(lChange),
-        coins_earned: applyMultiplier(coins.loss), placement: 2,
+        elo_before: lElo, elo_after: newLElo, elo_change: lChange,
+        coins_earned: coins.loss, placement: 2,
       }).eq('game_id', gameId).eq('profile_id', lP.id)
 
-    } else if (isComp && is3p && winnerId) {
-      // Competitive 3P
-      const coins3p: Record<number,number> = { 1: 200, 2: 60, 3: 20 }
+    } else if (is3p && winnerId) {
+      // Competitive 3P â ELO (elo_3p) + coins
+      const coins = COIN_REWARDS.competitive_3p
       for (let i = 0; i < currentPlayers.length; i++) {
         const pl = currentPlayers[i]
         const p = profileMap[pl.profile_id]
-        const pElo = (p as any).elo_3p ?? p.elo ?? 0
+        const pElo = p.elo_3p ?? p.elo ?? 0
         const isWin = pl.profile_id === winnerId
-        const placement = isWin ? 1 : i + 1
-        const earned = coins3p[Math.min(placement, 3)] ?? 20
+        const placement = isWin ? 1 : (i + 1 === 1 ? 2 : i + 1) // winner = 1, others keep index order
+        const coinKey = Math.min(placement, 3) as 1 | 2 | 3
+        const earned = coins[coinKey]
         const eloChange = isWin ? ELO_CONFIG.win_reward_3p : -ELO_CONFIG.loss_penalty_3p
         const newElo = Math.max(0, pElo + eloChange)
         await supabase.from('profiles').update({
@@ -408,7 +440,9 @@ export default function GamePage() {
           coins_earned: earned, placement,
         }).eq('game_id', gameId).eq('profile_id', p.id)
       }
-    } else if (isComp && !is1v1 && !is3p && winnerId) {
+
+    } else if (!is1v1 && !is3p && winnerId) {
+      // Competitive 4P â ELO (elo_4p) + coins
       const coins = COIN_REWARDS.competitive_4p
       for (let i = 0; i < currentPlayers.length; i++) {
         const pl = currentPlayers[i]
@@ -417,7 +451,7 @@ export default function GamePage() {
         const isWin = pl.profile_id === winnerId
         const placement = isWin ? 1 : i + 1
         const coinKey = placement as 1 | 2 | 3 | 4
-        const earned = applyMultiplier(coins[coinKey] ?? coins[4])
+        const earned = coins[coinKey] ?? coins[4]
         const eloChange = isWin ? ELO_CONFIG.win_reward_4p : -ELO_CONFIG.loss_penalty_4p
         const newElo = Math.max(0, pElo + eloChange)
         await supabase.from('profiles').update({
@@ -429,30 +463,19 @@ export default function GamePage() {
           coins_earned: earned, placement,
         }).eq('game_id', gameId).eq('profile_id', p.id)
       }
-    } else {
-      // Casual (1v1 or 4p)
-      const coins = is1v1 ? COIN_REWARDS.competitive_1v1 : COIN_REWARDS.competitive_4p
-      for (let i = 0; i < currentPlayers.length; i++) {
-        const pl = currentPlayers[i]
-        const isWin = pl.profile_id === winnerId
-        const p = profileMap[pl.profile_id]
-        const earned = is1v1
-          ? applyMultiplier(isWin ? (coins as {win:number;loss:number}).win : (coins as {win:number;loss:number}).loss)
-          : applyMultiplier((coins as Record<number,number>)[isWin ? 1 : i + 1] ?? (coins as Record<number,number>)[4])
-        await supabase.from('profiles').update({
-          coins: p.coins + earned,
-          games_played: p.games_played + 1,
-          games_won: isWin ? p.games_won + 1 : p.games_won,
-        }).eq('id', p.id)
-        await supabase.from('game_players').update({
-          coins_earned: earned, placement: isWin ? 1 : i + 2,
-        }).eq('game_id', gameId).eq('profile_id', p.id)
-      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId, supabase])
 
-  // ââ Cancel hosted game ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // \u2500\u2500 Start hosted game \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  const startGame = async () => {
+    await supabase.from('games').update({
+      status: 'active',
+      board_state: createBoard(),
+    }).eq('id', gameId)
+  }
+
+  // \u2500\u2500 Cancel hosted game \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   const cancelGame = async () => {
     const myProfile = myProfileRef.current
     const game = gameRef.current
@@ -462,16 +485,25 @@ export default function GamePage() {
     }
     router.push('/')
   }
-  // Leave game: award win to opponent in competitive, deduct elo on leave
+
+  // \u2500\u2500 Leave game \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   const handleLeaveGame = useCallback(async () => {
     const profile = myProfileRef.current
     const game = gameRef.current
     const currentPlayers = playersRef.current
     if (!profile || !game) { router.push('/'); return }
-    if (game.host_id || game.mode.startsWith('hosted')) { router.push('/'); return }
-    const is1v1 = game.mode.endsWith('1v1')
-    const is3p  = game.mode.endsWith('3p')
+
+    // Hosted games â no ELO, just navigate
+    if (game.host_id || game.mode.startsWith('hosted')) {
+      router.push('/')
+      return
+    }
+
+    const is1v1 = game.mode === 'competitive_1v1'
+    const is3p  = game.mode === 'competitive_3p'
+
     if (is1v1 && currentPlayers.length === 2) {
+      // Award full win to the opponent
       const opponent = currentPlayers.find(p => p.profile_id !== profile.id)
       if (opponent) {
         await distributeRewards(opponent.profile_id)
@@ -481,41 +513,49 @@ export default function GamePage() {
           completed_at: new Date().toISOString(),
         }).eq('id', game.id)
       }
-    } else if (is3p && currentPlayers.length > 0) {
-      const { data: fp3 } = await supabase.from('profiles').select('*').eq('id', profile.id)
-      const p3 = fp3?.[0]
-      if (p3) {
-        const pElo3 = (p3 as any).elo_3p ?? p3.elo ?? 0
-        const eloChange3 = -ELO_CONFIG.loss_penalty_3p
-        const newElo3 = Math.max(0, pElo3 + eloChange3)
-        await supabase.from('profiles').update({ elo_3p: newElo3 }).eq('id', p3.id)
+    } else if (is3p) {
+      // 3P leave â deduct ELO from leaver on elo_3p, abandon game
+      const { data: freshProfiles } = await supabase.from('profiles').select('*').eq('id', profile.id)
+      const p = freshProfiles?.[0] as Profile | undefined
+      if (p) {
+        const pElo = p.elo_3p ?? p.elo ?? 0
+        const eloChange = -ELO_CONFIG.loss_penalty_3p
+        const newElo = Math.max(0, pElo + eloChange)
+        await supabase.from('profiles').update({ elo_3p: newElo }).eq('id', p.id)
         await supabase.from('game_players').update({
-          elo_change: eloChange3, placement: currentPlayers.length,
-        }).eq('game_id', game.id).eq('profile_id', p3.id)
+          elo_change: eloChange,
+          placement: currentPlayers.length,
+        }).eq('game_id', game.id).eq('profile_id', p.id)
       }
-      await supabase.from('games').update({ status: 'abandoned', completed_at: new Date().toISOString() }).eq('id', game.id)
+      await supabase.from('games').update({
+        status: 'abandoned',
+        completed_at: new Date().toISOString(),
+      }).eq('id', game.id)
     } else if (!is1v1 && !is3p && currentPlayers.length > 0) {
-      const { data: fp } = await supabase.from('profiles').select('*').eq('id', profile.id)
-      const p = fp?.[0]
+      // 4P leave â deduct ELO from leaver on elo_4p, abandon game
+      const { data: freshProfiles } = await supabase.from('profiles').select('*').eq('id', profile.id)
+      const p = freshProfiles?.[0] as Profile | undefined
       if (p) {
         const pElo = p.elo_4p ?? p.elo ?? 0
         const eloChange = -ELO_CONFIG.loss_penalty_4p
         const newElo = Math.max(0, pElo + eloChange)
         await supabase.from('profiles').update({ elo_4p: newElo }).eq('id', p.id)
         await supabase.from('game_players').update({
-          elo_change: eloChange, placement: currentPlayers.length,
+          elo_change: eloChange,
+          placement: currentPlayers.length,
         }).eq('game_id', game.id).eq('profile_id', p.id)
       }
       await supabase.from('games').update({
-        status: 'abandoned', completed_at: new Date().toISOString(),
+        status: 'abandoned',
+        completed_at: new Date().toISOString(),
       }).eq('id', game.id)
     }
+
     router.push('/')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, router, distributeRewards])
 
-
-  // ââ Render ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // \u2500\u2500 Render \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   if (loading) return <LoadingScreen />
   if (error)   return <ErrorScreen message={error} />
 
@@ -526,11 +566,33 @@ export default function GamePage() {
 
   // Waiting room
   if (game?.status === 'waiting') {
-    const modeLabel = game.max_players === 4 ? '4-Player' : '1v1'
+    const modeLabel = game?.max_players === 4 ? '4-Player' : game?.max_players === 3 ? '3-Player' : '1v1'
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center">
+        <div className="card w-full max-w-sm text-center">
+          <h1 className="text-xl font-bold text-white mb-2">Waiting Room&nbsp;</h1>
+          <p className="text-slate-400 text-sm mb-4">
+            {modeLabel} â¢ {players.length} / {game?.max_players} players
+          </p>
+          {!myProfile || players.find(p => p.profile_id === myProfile.id)?.player_index !== 0 ? null : (
+            <div className="flex gap-2">
+              {players.length >= (is1MinimumForHostedMode(game?.mode) ? 2 : game?.max_players ?? 2) && (
+                <button onClick={startGame} className="btn-primary flex-1">Start Game</button>
+              )}
+              <button onClick={cancelGame} className="btn-ghost flex-1">Cancel</button>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }= 'waiting') {
+    const modeLabel = game.max_players === 4 ? '4-Player' : game.max_players === 3 ? '3-Player' : '1v1'
+    const amHost = players[0]?.profile_id === myProfile?.id
+    const canStart = players.length >= 2
     return (
       <div className="min-h-screen flex flex-col">
         <header className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-          <button onClick={cancelGame} className="btn-ghost text-sm">â Lobby</button>
+          <button onClick={cancelGame} className="btn-ghost text-sm">{'\u2190'} Lobby</button>
           <div className="text-center">
             <span className="text-neon-cyan text-glow-cyan font-bold text-lg">ROTATE</span>
             <span className="text-neon-purple text-glow-purple font-bold text-lg">4</span>
@@ -541,12 +603,12 @@ export default function GamePage() {
         <div className="flex-1 flex flex-col items-center justify-center px-4">
           <div className="card w-full max-w-sm">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-base font-bold text-white">Hosting â waiting for playersâ¦</h2>
+              <h2 className="text-base font-bold text-white">Hosting {'\u2014'} waiting for players{'\u2026'}</h2>
               <div className="w-2.5 h-2.5 rounded-full bg-neon-cyan animate-pulse" />
             </div>
 
             <div className="flex gap-2 mb-5">
-              <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">ð  Private</span>
+              <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">{'\u{1F3E0}'} Private</span>
               <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">{modeLabel}</span>
             </div>
 
@@ -562,7 +624,7 @@ export default function GamePage() {
                       {filled ? ((p.profiles as Profile | undefined)?.username?.[0]?.toUpperCase() ?? '?') : '?'}
                     </span>
                     <span className="text-xs" style={{ color: filled ? '#00f5ff60' : '#1e293b' }}>
-                      {filled ? (isMe ? 'You' : ((p.profiles as Profile | undefined)?.username ?? 'Â·Â·Â·')) : 'Â·Â·Â·'}
+                      {filled ? (isMe ? 'You' : ((p.profiles as Profile | undefined)?.username ?? '\u00b7\u00b7\u00b7')) : '\u00b7\u00b7\u00b7'}
                     </span>
                   </div>
                 )
@@ -584,8 +646,14 @@ export default function GamePage() {
               ))}
             </div>
 
+            {amHost && canStart && (
+              <button onClick={startGame} className="btn-primary w-full mb-3">
+                {'\u25B6'} Start Game
+              </button>
+            )}
+
             <button onClick={cancelGame} className="btn-ghost w-full text-sm text-red-400 hover:text-red-300 border-red-500/20 hover:border-red-500/40">
-              â Cancel Game
+              {'\u2715'} Cancel Game
             </button>
           </div>
         </div>
@@ -628,7 +696,6 @@ export default function GamePage() {
         />
       </div>
 
-      {/* Turn timer */}
       {gameActive && !winState && (
         <div className="mt-4 flex flex-col items-center gap-1">
           <div className="flex items-center gap-2">
@@ -654,7 +721,6 @@ export default function GamePage() {
         </div>
       )}
 
-      {/* Leave button */}
       {gameActive && (
         <button
           onClick={handleLeaveGame}
@@ -676,7 +742,7 @@ function LoadingScreen() {
         <div className="text-4xl font-black text-neon-cyan text-glow-cyan animate-pulse mb-4">
           ROTATE<span className="text-neon-purple text-glow-purple">4</span>
         </div>
-        <p className="text-slate-500 text-sm">Loading gameâ¦</p>
+        <p className="text-slate-500 text-sm">Loading game{'\u2026'}</p>
       </div>
     </div>
   )
