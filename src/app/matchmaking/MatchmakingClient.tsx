@@ -6,7 +6,10 @@ import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/types'
 
 const SYM_COLOR: Record<string, string> = {
-  X: '#00f5ff', O: '#a855f7', W: '#22c55e', M: '#f59e0b',
+  X: '#00f5ff',
+  O: '#a855f7',
+  W: '#22c55e',
+  M: '#f59e0b',
 }
 const SYMBOLS = ['X', 'O', 'W', 'M']
 const STALE_MS = 90_000
@@ -17,9 +20,9 @@ export default function MatchmakingClient() {
   const mode      = (params.get('mode') as '1v1' | '3p' | '4p') ?? '1v1'
   const supabase  = createClient()
 
-  const [profile,   setProfile]   = useState<Profile | null>(null)
-  const [waitSecs,  setWaitSecs]  = useState(0)
-  const [phase,     setPhase]     = useState<'searching' | 'found'>('searching')
+  const [profile, setProfile]     = useState<Profile | null>(null)
+  const [waitSecs, setWaitSecs]   = useState(0)
+  const [phase, setPhase]         = useState<'searching' | 'found'>('searching')
   const [opponents, setOpponents] = useState<{ username: string; symbol: string }[]>([])
   const [countdown, setCountdown] = useState<number | null>(null)
 
@@ -64,11 +67,9 @@ export default function MatchmakingClient() {
         .from('profiles').select('*').eq('id', user.id).single()
       if (mountedRef.current && p) setProfile(p as Profile)
 
-      const elo = mode === '1v1'
-        ? ((p as any)?.elo_1v1 ?? 1200)
-        : mode === '3p'
-          ? ((p as any)?.elo_3p ?? 1200)
-          : ((p as any)?.elo_4p ?? 1200)
+      const elo = mode === '1v1' ? ((p as any)?.elo_1v1 ?? 1200)
+               : mode === '3p'  ? ((p as any)?.elo_3p  ?? 1200)
+               :                  ((p as any)?.elo_4p  ?? 1200)
 
       const { data: row } = await supabase
         .from('matchmaking_queue')
@@ -99,41 +100,44 @@ export default function MatchmakingClient() {
           .delete().eq('profile_id', userIdRef.current).then(() => {})
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function poll(userId: string) {
-    // STEP 1: Check if already placed in a game
-    // Two separate queries — avoids unreliable PostgREST dot-filter on joined tables
-    const { data: gp } = await supabase
+    // STEP 1: Check if already placed in an active game created after we joined the queue.
+    // We fetch ALL game_players entries for this user, then query games directly.
+    // We do NOT use .order('id').limit(1) because game_players.id is a UUID (random,
+    // not time-ordered) â ordering by UUID would return a random old completed game,
+    // causing Player 2 to never detect the new game and get stuck searching forever.
+    const { data: gpRows } = await supabase
       .from('game_players')
       .select('game_id')
       .eq('profile_id', userId)
-      .order('id', { ascending: false })
-      .limit(1)
-      .maybeSingle()
 
-    if (gp?.game_id) {
-      const { data: g } = await supabase
+    if (gpRows?.length) {
+      const gameIds = gpRows.map(r => r.game_id)
+      const { data: activeGame } = await supabase
         .from('games')
         .select('id, status, created_at')
-        .eq('id', gp.game_id)
+        .in('id', gameIds)
+        .eq('status', 'active')
+        .gte('created_at', enteredAtRef.current)
+        .limit(1)
         .maybeSingle()
 
-      if (g?.status === 'active' && g.created_at >= enteredAtRef.current) {
+      if (activeGame?.id) {
         if (pollRef.current) clearInterval(pollRef.current)
         await supabase.from('matchmaking_queue').delete().eq('profile_id', userId)
-
         const { data: allGps } = await supabase
           .from('game_players')
           .select('symbol, profiles(username)')
-          .eq('game_id', g.id)
+          .eq('game_id', activeGame.id)
           .order('player_index')
         const found = (allGps ?? []).map((r, i) => ({
           username: (r.profiles as any)?.username ?? '?',
-          symbol:   r.symbol ?? SYMBOLS[i],
+          symbol: r.symbol ?? SYMBOLS[i],
         }))
-        if (mountedRef.current) beginCountdown(g.id, found)
+        if (mountedRef.current) beginCountdown(activeGame.id, found)
         return
       }
     }
@@ -149,12 +153,13 @@ export default function MatchmakingClient() {
 
     if (!queue) return
 
-    // STEP 3: Filter ghost entries
+    // STEP 3: Filter ghost entries (inactive for >STALE_MS)
     const cutoff = new Date(Date.now() - STALE_MS).toISOString()
     const fresh  = queue.filter(q => q.joined_at > cutoff)
+
     if (fresh.length < maxPlayers) return
 
-    // STEP 4: Only the oldest player creates
+    // STEP 4: Only the oldest player (first in sorted queue) creates the game
     if (fresh[0].profile_id !== userId) return
     if (creatingRef.current) return
     creatingRef.current = true
@@ -182,11 +187,9 @@ export default function MatchmakingClient() {
       const prof = qp.profiles as {
         username?: string; elo_1v1?: number; elo_3p?: number; elo_4p?: number
       } | null
-      const eloBefore = mode === '1v1'
-        ? (prof?.elo_1v1 ?? qp.elo ?? 1200)
-        : mode === '3p'
-          ? (prof?.elo_3p  ?? qp.elo ?? 1200)
-          : (prof?.elo_4p  ?? qp.elo ?? 1200)
+      const eloBefore = mode === '1v1' ? (prof?.elo_1v1 ?? qp.elo ?? 1200)
+                      : mode === '3p'  ? (prof?.elo_3p  ?? qp.elo ?? 1200)
+                      :                  (prof?.elo_4p  ?? qp.elo ?? 1200)
       playersList.push({ username: prof?.username ?? '?', symbol: SYMBOLS[i] })
       return {
         game_id:      game.id,
@@ -220,8 +223,7 @@ export default function MatchmakingClient() {
     router.push('/')
   }
 
-  const fmt = (s: number) =>
-    `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -266,9 +268,7 @@ export default function MatchmakingClient() {
               const filled = isMe || !!opp
               const sym    = opp?.symbol ?? SYMBOLS[i]
               const col    = SYM_COLOR[sym] ?? '#00f5ff'
-              const label  = isMe
-                ? (profile?.username ?? 'You')
-                : (opp?.username ?? null)
+              const label  = isMe ? (profile?.username ?? 'You') : (opp?.username ?? null)
               return (
                 <div
                   key={i}
@@ -281,8 +281,10 @@ export default function MatchmakingClient() {
                   <span className="text-lg font-black" style={{ color: filled ? col : '#1e293b' }}>
                     {filled ? sym : '?'}
                   </span>
-                  <span className="text-xs truncate max-w-full px-1 text-center"
-                        style={{ color: filled ? `${col}80` : '#1e293b' }}>
+                  <span
+                    className="text-xs truncate max-w-full px-1 text-center"
+                    style={{ color: filled ? `${col}80` : '#1e293b' }}
+                  >
                     {filled ? (isMe ? 'You' : (label ?? '\u00b7\u00b7\u00b7')) : '\u00b7\u00b7\u00b7'}
                   </span>
                 </div>
@@ -332,8 +334,9 @@ export default function MatchmakingClient() {
           >
             {phase === 'found' ? '\u2713 Match found' : '\u2715 Cancel'}
           </button>
+
         </div>
       </div>
     </div>
   )
-  }
+}
