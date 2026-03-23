@@ -139,7 +139,7 @@ export default function GamePage() {
 
     const channel = supabase.channel(`game:${gameId}`)
       .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}`,
+        event:'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}`,
       }, (payload) => {
         const g = payload.new as Game
         if (!mountedRef.current) return
@@ -191,34 +191,7 @@ export default function GamePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId])
 
-  // \u2500\u2500 Handle game end \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  useCallback(function handleGameEnd(g: Game) {
-    if (winStateRef.current) return
-    winStateRef.current = true
-
-    const myProf = myProfileRef.current
-    const currentPlayers = playersRef.current
-    const winnerId = g.winner_id
-
-    const is1v1 = g.mode === 'competitive_1v1'
-    const is3p = g.mode === 'competitive_3p'
-    const is4p = g.mode === 'competitive_4p'
-
-    if (g.status === 'abandoned') {
-      setWinState({ winner: null, winnerUsername: '', isMe: false, coinsEarned: 0, isDraw: true })
-      return
-    }
-
-    if (!myProf || currentPlayers.length === 0) return
-
-    const profileMap: Record<string, Profile> = {}
-    for (const pl of currentPlayers) {
-      if (pl.profiles) profileMap[pl.profile_id] = pl.profiles as Profile
-    }
-
-    async function distributeRewards() {
-      if (is1v1 && winnerId) {
-u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // \u2500\u2500 Handle game end \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   const handleGameEnd = useCallback(async (finishedGame: Game) => {
     if (winStateRef.current) return
     winStateRef.current = true
@@ -507,7 +480,8 @@ u2500\u2500\u2500\u2500\u2500\u2500\u2500
       const opponent = currentPlayers.find(p => p.profile_id !== profile.id)
       if (opponent) {
         await distributeRewards(opponent.profile_id)
-        await supabase.from('games').update({
+      }
+  await supabase.from('games').update({
           status: 'abandoned',
           winner_id: opponent.profile_id,
           completed_at: new Date().toISOString(),
@@ -555,7 +529,7 @@ u2500\u2500\u2500\u2500\u2500\u2500\u2500
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, router, distributeRewards])
 
-  // \u2500\u2500 Render \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // \u2500\u2500 Render \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   if (loading) return <LoadingScreen />
   if (error)   return <ErrorScreen message={error} />
 
@@ -566,26 +540,6 @@ u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
   // Waiting room
   if (game?.status === 'waiting') {
-    const modeLabel = game?.max_players === 4 ? '4-Player' : game?.max_players === 3 ? '3-Player' : '1v1'
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center">
-        <div className="card w-full max-w-sm text-center">
-          <h1 className="text-xl font-bold text-white mb-2">Waiting Room&nbsp;</h1>
-          <p className="text-slate-400 text-sm mb-4">
-            {modeLabel} â¢ {players.length} / {game?.max_players} players
-          </p>
-          {!myProfile || players.find(p => p.profile_id === myProfile.id)?.player_index !== 0 ? null : (
-            <div className="flex gap-2">
-              {players.length >= (is1MinimumForHostedMode(game?.mode) ? 2 : game?.max_players ?? 2) && (
-                <button onClick={startGame} className="btn-primary flex-1">Start Game</button>
-              )}
-              <button onClick={cancelGame} className="btn-ghost flex-1">Cancel</button>
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }= 'waiting') {
     const modeLabel = game.max_players === 4 ? '4-Player' : game.max_players === 3 ? '3-Player' : '1v1'
     const amHost = players[0]?.profile_id === myProfile?.id
     const canStart = players.length >= 2
@@ -677,7 +631,7 @@ u2500\u2500\u2500\u2500\u2500\u2500\u2500
         </div>
         <div className="text-xs text-slate-500 text-right">
           <p>{game?.mode.replace(/_/g, ' ').toUpperCase()}</p>
-          {rotationCount > 0 && <p className="text-neon-amber">{'\u21BB'} {'\u00D7'}{rotationCount}</p>}
+          {rotationCount > 0 && <p className="text-neon-amber">{'\u21BB'} {'\u00D8't{rotationCount}</p>}
         </div>
       </header>
 
