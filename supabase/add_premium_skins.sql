@@ -1,5 +1,5 @@
 -- ============================================================
--- ADD 3 PREMIUM SKINS: Sakura Petals, Ocean Depths, Space Nebula
+-- ADD 3 ULTRA SKINS: Sakura Petals, Ocean Depths, Space Nebula
 -- Run this in Supabase SQL Editor (once)
 -- Date: 2026-03-28
 -- ============================================================
@@ -9,8 +9,8 @@ INSERT INTO skins (name, description, color, glow_color, price, is_default)
 VALUES (
   'Sakura Petals',
   'Delicate cherry blossom pink with a warm petal glow',
-  '#f472b6',
-  '#ec4899',
+  '#fda4af',
+  '#e879a2',
   2000,
   false
 )
@@ -33,8 +33,8 @@ INSERT INTO skins (name, description, color, glow_color, price, is_default)
 VALUES (
   'Space Nebula',
   'Vibrant cosmic violet with swirling nebula glow',
-  '#8b5cf6',
-  '#7c3aed',
+  '#a5b4fc',
+  '#818cf8',
   2000,
   false
 )
