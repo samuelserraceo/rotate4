@@ -77,7 +77,7 @@ export default function GamePage() {
       const skinId = p.profiles?.equipped_skin_id
       if (skinId && skinMap[skinId]) {
         const skin = skinMap[skinId] as Skin
-        colorMap[p.symbol as PlayerSymbol] = { color: skin.color, glow: skin.glow_color }
+        colorMap[p.symbol as PlayerSymbol] = { color: skin.color, glow: skin.glow_color, skinName: skin.name }
       }
     }
     setPlayerColors(colorMap)
