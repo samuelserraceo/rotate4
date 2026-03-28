@@ -5,6 +5,9 @@ import type { Board, PlayerSymbol, GamePlayer, Profile } from '@/types'
 import { SYMBOL_COLORS } from '@/types'
 import { getValidLandingRows } from '@/lib/game/board'
 
+// Per-player skin colors: maps symbol → { color, glow }
+export type PlayerColorMap = Partial<Record<PlayerSymbol, { color: string; glow: string }>>
+
 interface BoardProps {
   board: Board
   players: (GamePlayer & { profiles?: Profile })[]
@@ -16,6 +19,7 @@ interface BoardProps {
   disabled: boolean
   gameOver: boolean
   recentDrop?: { row: number; col: number } | null
+  playerColors?: PlayerColorMap
 }
 
 export default function GameBoard({
@@ -29,7 +33,10 @@ export default function GameBoard({
   disabled,
   gameOver,
   recentDrop,
+  playerColors,
 }: BoardProps) {
+  // Resolve color for a symbol: skin color first, fallback to SYMBOL_COLORS
+  const getColor = useCallback((sym: PlayerSymbol) => playerColors?.[sym] ?? SYMBOL_COLORS[sym], [playerColors])
   const [hoveredCol, setHoveredCol] = useState<number | null>(null)
   const isMyTurn = mySymbol !== null && currentSymbol === mySymbol
   const canClick = isMyTurn && !disabled && !isRotating
@@ -62,7 +69,7 @@ export default function GameBoard({
         style={{ touchAction: 'none' }}
       >
         {/* Player labels in corners */}
-        <PlayerCorners players={players} currentSymbol={currentSymbol} mySymbol={mySymbol} />
+        <PlayerCorners players={players} currentSymbol={currentSymbol} mySymbol={mySymbol} getColor={getColor} />
 
         {/* Drop arrow indicator above hovered column */}
         {canClick && (
@@ -72,7 +79,7 @@ export default function GameBoard({
                 {hoveredCol === c && hasValidLanding && (
                   <div
                     className="text-sm animate-bounce"
-                    style={{ color: mySymbol ? SYMBOL_COLORS[mySymbol].color : '#00f5ff' }}
+                    style={{ color: mySymbol ? getColor(mySymbol).color : '#00f5ff' }}
                   >
                     {'\u25BC'}
                   </div>
@@ -104,6 +111,7 @@ export default function GameBoard({
                     canClick={canClick && hasValidLanding}
                     mySymbol={mySymbol}
                     boardSize={boardSize}
+                    getColor={getColor}
                     onClick={() => handleCellClick(rIdx, cIdx)}
                     onMouseEnter={() => canClick && setHoveredCol(cIdx)}
                     onMouseLeave={() => setHoveredCol(null)}
@@ -127,12 +135,13 @@ export default function GameBoard({
         players={players}
         gameOver={gameOver}
         isRotating={isRotating}
+        getColor={getColor}
       />
     </div>
   )
 }
 
-// ─── Board Cell ────────────────────────────────────────────────────────────
+// ─── Board Cell ────────────────────────────────────────────────────────────────────────────
 
 interface CellProps {
   cell: PlayerSymbol | null
@@ -142,6 +151,7 @@ interface CellProps {
   canClick: boolean
   mySymbol: PlayerSymbol | null
   boardSize: number
+  getColor: (sym: PlayerSymbol) => { color: string; glow: string }
   onClick: () => void
   onMouseEnter: () => void
   onMouseLeave: () => void
@@ -150,10 +160,10 @@ interface CellProps {
 
 function BoardCell({
   cell, isWinning, isValidLanding, isRecentDrop, canClick, mySymbol, boardSize,
-  onClick, onMouseEnter, onMouseLeave, onTouchStart,
+  getColor, onClick, onMouseEnter, onMouseLeave, onTouchStart,
 }: CellProps) {
-  const color = cell ? SYMBOL_COLORS[cell].color : undefined
-  const glow  = cell ? SYMBOL_COLORS[cell].glow  : undefined
+  const color = cell ? getColor(cell).color : undefined
+  const glow  = cell ? getColor(cell).glow  : undefined
   // Scale cell size based on board dimensions: 9->52px max, 11->44px max, 13->38px max
   const maxSize = Math.max(28, Math.floor(52 * 9 / boardSize))
   const vwSize = Math.floor(75 / boardSize)
@@ -177,13 +187,13 @@ function BoardCell({
       )}
       {/* Ghost piece at ALL valid landing positions in hovered column */}
       {!cell && isValidLanding && mySymbol && (
-        <GhostPiece symbol={mySymbol} color={SYMBOL_COLORS[mySymbol].color} boardSize={boardSize} />
+        <GhostPiece symbol={mySymbol} color={getColor(mySymbol).color} boardSize={boardSize} />
       )}
     </div>
   )
 }
 
-// ─── Pieces ──────────────────────────────────────────────────────────────────────
+// ─── Pieces ────────────────────────────────────────────────────────────────────────────────────
 
 function GamePiece({ symbol, color, glow, winning, recentDrop, boardSize }: {
   symbol: PlayerSymbol; color: string; glow: string; winning: boolean; recentDrop: boolean; boardSize: number
@@ -227,12 +237,13 @@ function GhostPiece({ symbol, color, boardSize }: { symbol: PlayerSymbol; color:
   )
 }
 
-// ─── Player Corners ──────────────────────────────────────────────────────────────
+// ─── Player Corners ────────────────────────────────────────────────────────────────────────────
 
-function PlayerCorners({ players, currentSymbol, mySymbol }: {
+function PlayerCorners({ players, currentSymbol, mySymbol, getColor }: {
   players: (GamePlayer & { profiles?: Profile })[]
   currentSymbol: PlayerSymbol | null
   mySymbol: PlayerSymbol | null
+  getColor: (sym: PlayerSymbol) => { color: string; glow: string }
 }) {
   const corners: Record<PlayerSymbol, { top?: string; bottom?: string; left?: string; right?: string }> = {
     X: { bottom: '-32px', left: '0' },
@@ -245,7 +256,7 @@ function PlayerCorners({ players, currentSymbol, mySymbol }: {
     <>
       {players.map(p => {
         const sym = p.symbol as PlayerSymbol
-        const color = SYMBOL_COLORS[sym].color
+        const color = getColor(sym).color
         const isActive = currentSymbol === sym
         const isMe = mySymbol === sym
         const corner = corners[sym]
@@ -274,18 +285,19 @@ function PlayerCorners({ players, currentSymbol, mySymbol }: {
   )
 }
 
-// ─── Turn Indicator ────────────────────────────────────────────────────────────────
+// ─── Turn Indicator ──────────────────────────────────────────────────────────────────────────────
 
-function TurnIndicator({ currentSymbol, mySymbol, players, gameOver, isRotating }: {
+function TurnIndicator({ currentSymbol, mySymbol, players, gameOver, isRotating, getColor }: {
   currentSymbol: PlayerSymbol | null
   mySymbol: PlayerSymbol | null
   players: (GamePlayer & { profiles?: Profile })[]
   gameOver: boolean
   isRotating: boolean
+  getColor: (sym: PlayerSymbol) => { color: string; glow: string }
 }) {
   if (!currentSymbol) return null
 
-  const color = SYMBOL_COLORS[currentSymbol].color
+  const color = getColor(currentSymbol).color
   const player = players.find(p => p.symbol === currentSymbol)
   const isMe = currentSymbol === mySymbol
 
