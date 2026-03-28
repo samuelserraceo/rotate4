@@ -124,12 +124,12 @@ export interface WinResult {
 // Economy constants — hosted games give no rewards (handled in game page)
 export const COIN_REWARDS = {
   competitive_1v1: { win: 150, loss: 30 },
-  competitive_3p:  { 1: 225, 2: 75,  3: 25 },
-  competitive_4p:  { 1: 300, 2: 100, 3: 50,  4: 20 },
+  competitive_3p:  { win: 175, loss: -75 },
+  competitive_4p:  { win: 200, loss: -75 },
 } as const
 
 export const ELO_CONFIG = {
-  starting: 1200,
+  starting: 0,
   win_reward: 150,
   loss_penalty: 100,
   win_reward_3p: 175,
