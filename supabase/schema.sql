@@ -1,5 +1,5 @@
 -- ============================================================
--- ROTATE4 — SUPABASE DATABASE SCHEMA
+-- ROTATE4 â SUPABASE DATABASE SCHEMA
 -- Run this entire file in Supabase SQL Editor (once)
 -- ============================================================
 
@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS profiles (
   username TEXT UNIQUE NOT NULL,
   email TEXT,
   elo INTEGER NOT NULL DEFAULT 1200,
+  elo_1v1 INTEGER NOT NULL DEFAULT 1200,
+  elo_3p INTEGER NOT NULL DEFAULT 1200,
+  elo_4p INTEGER NOT NULL DEFAULT 1200,
   coins INTEGER NOT NULL DEFAULT 0,
   games_played INTEGER NOT NULL DEFAULT 0,
   games_won INTEGER NOT NULL DEFAULT 0,
@@ -69,7 +72,7 @@ CREATE TABLE IF NOT EXISTS friendships (
 -- ============================================================
 CREATE TABLE IF NOT EXISTS games (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  mode TEXT NOT NULL CHECK (mode IN ('casual_1v1', 'casual_4p', 'competitive_1v1', 'competitive_4p')),
+  mode TEXT NOT NULL CHECK (mode IN ('casual_1v1', 'casual_4p', 'competitive_1v1', 'competitive_3p', 'competitive_4p', 'hosted_1v1', 'hosted_3p', 'hosted_4p')),
   status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'active', 'completed', 'abandoned')),
   board_state JSONB NOT NULL DEFAULT '[[null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null]]',
   current_turn_index INTEGER NOT NULL DEFAULT 0,
@@ -108,8 +111,8 @@ CREATE TABLE IF NOT EXISTS game_moves (
   game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
   profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   move_number INTEGER NOT NULL,
-  column_index INTEGER NOT NULL CHECK (column_index BETWEEN 0 AND 8),
-  row_landed INTEGER NOT NULL CHECK (row_landed BETWEEN 0 AND 8),
+  column_index INTEGER NOT NULL CHECK (column_index BETWEEN 0 AND 12),
+  row_landed INTEGER NOT NULL CHECK (row_landed BETWEEN 0 AND 12),
   caused_rotation BOOLEAN NOT NULL DEFAULT FALSE,
   board_state_after JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -121,7 +124,7 @@ CREATE TABLE IF NOT EXISTS game_moves (
 CREATE TABLE IF NOT EXISTS matchmaking_queue (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE UNIQUE,
-  mode TEXT NOT NULL CHECK (mode IN ('1v1', '4p')),
+  mode TEXT NOT NULL CHECK (mode IN ('1v1', '3p', '4p')),
   game_type TEXT NOT NULL CHECK (game_type IN ('casual', 'competitive')),
   elo INTEGER,
   joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -189,7 +192,8 @@ CREATE POLICY "game_moves_read" ON game_moves FOR SELECT USING (true);
 CREATE POLICY "game_moves_insert_auth" ON game_moves FOR INSERT WITH CHECK (auth.uid() = profile_id);
 
 -- Matchmaking queue: own row only
-CREATE POLICY "matchmaking_read_own" ON matchmaking_queue FOR SELECT USING (auth.uid() = profile_id);
+CREATE POLICY "matchmaking_read_all" ON matchmaking_queue FOR SELECT USING (true);
+CREATE POLICY "matchmaking_update_own" ON matchmaking_queue FOR UPDATE USING (auth.uid() = profile_id);
 CREATE POLICY "matchmaking_insert_own" ON matchmaking_queue FOR INSERT WITH CHECK (auth.uid() = profile_id);
 CREATE POLICY "matchmaking_delete_own" ON matchmaking_queue FOR DELETE USING (auth.uid() = profile_id);
 

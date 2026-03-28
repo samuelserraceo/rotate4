@@ -11,13 +11,14 @@ interface WinModalProps {
   coinsEarned: number
   eloChange?: number
   isDraw?: boolean
+  winnerColor?: string
 }
 
 export default function WinModal({
-  winner, winnerUsername, isMe, coinsEarned, eloChange, isDraw
+  winner, winnerUsername, isMe, coinsEarned, eloChange, isDraw, winnerColor,
 }: WinModalProps) {
   const router = useRouter()
-  const color = winner ? SYMBOL_COLORS[winner].color : '#64748b'
+  const color = winnerColor ?? (winner ? SYMBOL_COLORS[winner].color : '#64748b')
 
   return (
     <div className="modal-overlay">
@@ -33,7 +34,7 @@ export default function WinModal({
         )}
 
         <h2 className="text-2xl font-bold text-white mb-1">
-          {isDraw ? "It's a Draw!" : isMe ? '🎉 You Win!' : `${winnerUsername} Wins!`}
+          {isDraw ? "It's a Draw!" : isMe ? '\u{1F389} You Win!' : `${winnerUsername} Wins!`}
         </h2>
 
         <div className="neon-line my-4" />

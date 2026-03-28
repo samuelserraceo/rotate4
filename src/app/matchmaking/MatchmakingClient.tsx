@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/types'
+import { createBoard } from '@/lib/game/board'
 
 const SYM_COLOR: Record<string, string> = {
   X: '#00f5ff',
@@ -168,10 +169,11 @@ export default function MatchmakingClient() {
     const matched  = fresh.slice(0, maxPlayers)
     const fullMode = `competitive_${mode}` as const
 
-    // STEP 5: Create game row
+    // STEP 5: Create game row (board size: 9 for 1v1, 11 for 3P, 13 for 4P)
+    const boardSize = mode === '4p' ? 13 : mode === '3p' ? 11 : 9
     const { data: game, error: gameErr } = await supabase
       .from('games')
-      .insert({ mode: fullMode, max_players: maxPlayers, status: 'active' })
+      .insert({ mode: fullMode, max_players: maxPlayers, status: 'active', board_state: createBoard(boardSize) })
       .select('id')
       .single()
 
