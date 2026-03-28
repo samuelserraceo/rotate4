@@ -3,10 +3,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import GameBoard from '@/components/game/Board'
+import GameBoard, { type PlayerColorMap } from '@/components/game/Board'
 import WinModal from '@/components/game/WinModal'
-import type { Game, GamePlayer, Profile, PlayerSymbol, Board } from '@/types'
-import { COIN_REWARDS, ELO_CONFIG } from '@/types'
+import type { Game, GamePlayer, Profile, PlayerSymbol, Board, Skin } from '@/types'
+import { COIN_REWARDS, ELO_CONFIG, SYMBOL_COLORS } from '@/types'
 import { dropPiece, rotateBoard, checkWin, isBoardFull, createBoard } from '@/lib/game/board'
 import { calculate1v1Elo } from '@/lib/game/elo'
 
@@ -39,6 +39,7 @@ export default function GamePage() {
   const [rotationCount, setRotationCount] = useState(0)
   const [lastDrop, setLastDrop]           = useState<{ row: number; col: number } | null>(null)
   const [turnTimer, setTurnTimer]         = useState(30)
+  const [playerColors, setPlayerColors]   = useState<PlayerColorMap>({})
 
   // Stable refs ÃÂ¢ÃÂÃÂ never stale
   const processingMove    = useRef(false)
@@ -58,6 +59,29 @@ export default function GamePage() {
   useEffect(() => { myProfileRef.current = myProfile }, [myProfile])
   useEffect(() => { gameRef.current = game }, [game])
   useEffect(() => { currentTurnRef.current = currentTurn }, [currentTurn])
+
+  // Fetch equipped skins for all players and build color map
+  const fetchPlayerSkins = useCallback(async (playersList: PlayerWithProfile[]) => {
+    const skinIds = playersList
+      .map(p => p.profiles?.equipped_skin_id)
+      .filter((id): id is string => !!id)
+    if (skinIds.length === 0) { setPlayerColors({}); return }
+
+    const { data: skins } = await supabase
+      .from('skins').select('*').in('id', skinIds)
+    if (!skins || skins.length === 0) { setPlayerColors({}); return }
+
+    const skinMap = Object.fromEntries(skins.map((s: Skin) => [s.id, s]))
+    const colorMap: PlayerColorMap = {}
+    for (const p of playersList) {
+      const skinId = p.profiles?.equipped_skin_id
+      if (skinId && skinMap[skinId]) {
+        const skin = skinMap[skinId] as Skin
+        colorMap[p.symbol as PlayerSymbol] = { color: skin.color, glow: skin.glow_color }
+      }
+    }
+    setPlayerColors(colorMap)
+  }, [supabase])
 
   // \u2500\u2500 30-second turn timer \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   useEffect(() => {
@@ -130,6 +154,7 @@ export default function GamePage() {
         playersRef.current = playersData as PlayerWithProfile[]
         const me = playersData.find((p: GamePlayer) => p.profile_id === user.id)
         if (me) setMySymbol(me.symbol as PlayerSymbol)
+        fetchPlayerSkins(playersData as PlayerWithProfile[])
       }
 
       if (mountedRef.current) setLoading(false)
@@ -180,6 +205,7 @@ export default function GamePage() {
         if (mountedRef.current && pd) {
           setPlayers(pd as PlayerWithProfile[])
           playersRef.current = pd as PlayerWithProfile[]
+          fetchPlayerSkins(pd as PlayerWithProfile[])
         }
       })
       .subscribe()
@@ -653,6 +679,7 @@ export default function GamePage() {
           disabled={!gameActive || !isMyTurn}
           gameOver={!gameActive}
           recentDrop={lastDrop}
+          playerColors={playerColors}
         />
       </div>
 
@@ -690,7 +717,12 @@ export default function GamePage() {
         </button>
       )}
 
-      {winState && <WinModal {...winState} />}
+      {winState && (
+        <WinModal
+          {...winState}
+          winnerColor={winState.winner ? playerColors[winState.winner]?.color : undefined}
+        />
+      )}
     </div>
   )
 }
