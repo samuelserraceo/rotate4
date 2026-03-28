@@ -151,7 +151,7 @@ interface CellProps {
   canClick: boolean
   mySymbol: PlayerSymbol | null
   boardSize: number
-  getColor: (sym: PlayerSymbol) => { color: string; glow: string }
+  getColor: (sym: PlayerSymbol) => { color: string; glow: string; skinName?: string }
   onClick: () => void
   onMouseEnter: () => void
   onMouseLeave: () => void
@@ -407,7 +407,7 @@ function PlayerCorners({ players, currentSymbol, mySymbol, getColor }: {
   players: (GamePlayer & { profiles?: Profile })[]
   currentSymbol: PlayerSymbol | null
   mySymbol: PlayerSymbol | null
-  getColor: (sym: PlayerSymbol) => { color: string; glow: string }
+  getColor: (sym: PlayerSymbol) => { color: string; glow: string; skinName?: string }
 }) {
   const corners: Record<PlayerSymbol, { top?: string; bottom?: string; left?: string; right?: string }> = {
     X: { bottom: '-32px', left: '0' },
@@ -457,7 +457,7 @@ function TurnIndicator({ currentSymbol, mySymbol, players, gameOver, isRotating,
   players: (GamePlayer & { profiles?: Profile })[]
   gameOver: boolean
   isRotating: boolean
-  getColor: (sym: PlayerSymbol) => { color: string; glow: string }
+  getColor: (sym: PlayerSymbol) => { color: string; glow: string; skinName?: string }
 }) {
   if (!currentSymbol) return null
 
