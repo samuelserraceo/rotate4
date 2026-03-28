@@ -51,7 +51,7 @@ export default function ShopPage() {
     await supabase.from('profiles').update({ coins: profile.coins - skin.price }).eq('id', profile.id)
     setProfile(prev => prev ? { ...prev, coins: prev.coins - skin.price } : prev)
     setOwned(prev => [...prev, skin.id])
-    setMessage({ text: `â Purchased ${skin.name}!`, ok: true })
+    setMessage({ text: `✓ Purchased ${skin.name}!`, ok: true })
     setBuying(null)
     setTimeout(() => setMessage(null), 3000)
   }
@@ -60,7 +60,7 @@ export default function ShopPage() {
     if (!profile) return
     await supabase.from('profiles').update({ equipped_skin_id: skinId }).eq('id', profile.id)
     setEquipped(skinId)
-    setMessage({ text: 'â Skin equipped!', ok: true })
+    setMessage({ text: '✓ Skin equipped!', ok: true })
     setTimeout(() => setMessage(null), 2000)
   }
 
@@ -73,8 +73,8 @@ export default function ShopPage() {
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
-          <button onClick={() => router.push('/')} className="btn-ghost text-sm">â Back</button>
-          <h1 className="text-2xl font-black text-neon-cyan text-glow-cyan">ð¨ Skin Shop</h1>
+          <button onClick={() => router.push('/')} className="btn-ghost text-sm">← Back</button>
+          <h1 className="text-2xl font-black text-neon-cyan text-glow-cyan">🎨 Skin Shop</h1>
           <div className="card py-1.5 px-3 border-neon-amber/20">
             <span className="text-neon-amber font-bold text-sm">
               {profile?.coins ?? 0} <span className="text-xs text-slate-500">coins</span>
@@ -152,7 +152,7 @@ export default function ShopPage() {
                         className={`w-full text-xs py-1.5 rounded-lg font-semibold transition-all ${isEquipped ? 'border border-opacity-50' : 'btn-ghost border border-white/10'}`}
                         style={isEquipped ? { borderColor: skin.color, color: skin.color, background: `${skin.color}15` } : {}}
                       >
-                        {isEquipped ? 'â Equipped' : 'Equip'}
+                        {isEquipped ? '✓ Equipped' : 'Equip'}
                       </button>
                     ) : (
                       <button
@@ -161,7 +161,7 @@ export default function ShopPage() {
                         className="w-full text-xs py-1.5 rounded-lg font-semibold transition-all border"
                         style={{ background: `${skin.color}15`, color: skin.color, borderColor: `${skin.color}40` }}
                       >
-                        {isBuying ? 'â¦' : `Buy Â· ${skin.price}`}
+                        {isBuying ? '…' : `Buy · ${skin.price}`}
                       </button>
                     )}
                   </div>
@@ -252,7 +252,7 @@ function SkinSection({ title, price, skins, owned, equipped, buying, onBuy, onEq
                   disabled={isEquipped}
                   className={`w-full text-xs py-1.5 rounded-lg font-semibold transition-all ${isEquipped ? 'bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/30' : 'btn-ghost border border-white/10'}`}
                 >
-                  {isEquipped ? 'â Equipped' : 'Equip'}
+                  {isEquipped ? '✓ Equipped' : 'Equip'}
                 </button>
               ) : isOwned ? (
                 <button
@@ -261,7 +261,7 @@ function SkinSection({ title, price, skins, owned, equipped, buying, onBuy, onEq
                   className={`w-full text-xs py-1.5 rounded-lg font-semibold transition-all ${isEquipped ? 'border border-opacity-50' : 'btn-ghost border border-white/10'}`}
                   style={isEquipped ? { borderColor: skin.color, color: skin.color, background: `${skin.color}15` } : {}}
                 >
-                  {isEquipped ? 'â Equipped' : 'Equip'}
+                  {isEquipped ? '✓ Equipped' : 'Equip'}
                 </button>
               ) : (
                 <button
@@ -269,7 +269,7 @@ function SkinSection({ title, price, skins, owned, equipped, buying, onBuy, onEq
                   disabled={!!buying}
                   className="w-full text-xs py-1.5 rounded-lg font-semibold bg-neon-amber/10 text-neon-amber border border-neon-amber/30 hover:bg-neon-amber/20 transition-all disabled:opacity-40"
                 >
-                  {isBuying ? 'â¦' : `Buy Â· ${skin.price}`}
+                  {isBuying ? '…' : `Buy · ${skin.price}`}
                 </button>
               )}
             </div>
