@@ -40,7 +40,7 @@ export default function GamePage() {
   const [lastDrop, setLastDrop]           = useState<{ row: number; col: number } | null>(null)
   const [turnTimer, setTurnTimer]         = useState(30)
 
-  // Stable refs Ã¢ÂÂ never stale
+  // Stable refs ÃÂ¢ÃÂÃÂ never stale
   const processingMove    = useRef(false)
   const mountedRef        = useRef(true)
   const playersRef        = useRef<PlayerWithProfile[]>([])
@@ -342,12 +342,16 @@ export default function GamePage() {
   // \u2500\u2500 Distribute rewards \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   const distributeRewards = useCallback(async (
     winnerId: string | null,
+    isForfeit = false,
   ) => {
     const game = gameRef.current
     if (!game) return
 
-    // Hosted games Ã¢ÂÂ no rewards
+    // Hosted games ÃÂ¢ÃÂÃÂ no rewards
     if (game.host_id || game.mode.startsWith('hosted')) return
+
+    // Forfeit multiplier: 50% less coins & ELO when someone leaves
+    const mult = isForfeit ? 0.5 : 1
 
     const is1v1 = game.mode === 'competitive_1v1'
     const is3p  = game.mode === 'competitive_3p'
@@ -360,7 +364,7 @@ export default function GamePage() {
     const profileMap = Object.fromEntries(freshProfiles.map((p: Profile) => [p.id, p]))
 
     if (is1v1 && winnerId && currentPlayers.length === 2) {
-      // Competitive 1v1 Ã¢ÂÂ ELO + coins
+      // Competitive 1v1 ÃÂ¢ÃÂÃÂ ELO + coins
       const winnerPlayer = currentPlayers.find(p => p.profile_id === winnerId)!
       const loserPlayer  = currentPlayers.find(p => p.profile_id !== winnerId)!
       const wP = profileMap[winnerPlayer.profile_id]
@@ -368,44 +372,47 @@ export default function GamePage() {
 
       const wElo = wP.elo_1v1 ?? wP.elo ?? 0
       const lElo = lP.elo_1v1 ?? lP.elo ?? 0
-      const [newWEloRaw, newLEloRaw, wChange, lChange] = calculate1v1Elo(wElo, lElo, wP.games_played, lP.games_played)
-      const newWElo = Math.max(0, newWEloRaw)
-      const newLElo = Math.max(0, newLEloRaw)
+      const [newWEloRaw, newLEloRaw, wChangeRaw, lChangeRaw] = calculate1v1Elo(wElo, lElo, wP.games_played, lP.games_played)
+      const wChange = Math.round(wChangeRaw * mult)
+      const lChange = Math.round(lChangeRaw * mult)
+      const newWElo = Math.max(0, wElo + wChange)
+      const newLElo = Math.max(0, lElo + lChange)
       const coins = COIN_REWARDS.competitive_1v1
+      const winCoins = Math.round(coins.win * mult)
+      const lossCoins = Math.round(coins.loss * mult)
 
       await supabase.from('profiles').update({
-        elo_1v1: newWElo, coins: wP.coins + coins.win,
+        elo_1v1: newWElo, coins: Math.max(0, wP.coins + winCoins),
         games_played: wP.games_played + 1, games_won: wP.games_won + 1,
       }).eq('id', wP.id)
       await supabase.from('game_players').update({
         elo_before: wElo, elo_after: newWElo, elo_change: wChange,
-        coins_earned: coins.win, placement: 1,
+        coins_earned: winCoins, placement: 1,
       }).eq('game_id', gameId).eq('profile_id', wP.id)
 
       await supabase.from('profiles').update({
-        elo_1v1: newLElo, coins: lP.coins + coins.loss,
+        elo_1v1: newLElo, coins: Math.max(0, lP.coins + lossCoins),
         games_played: lP.games_played + 1,
       }).eq('id', lP.id)
       await supabase.from('game_players').update({
         elo_before: lElo, elo_after: newLElo, elo_change: lChange,
-        coins_earned: coins.loss, placement: 2,
+        coins_earned: lossCoins, placement: 2,
       }).eq('game_id', gameId).eq('profile_id', lP.id)
 
     } else if (is3p && winnerId) {
-      // Competitive 3P Ã¢ÂÂ ELO (elo_3p) + coins
+      // Competitive 3P ÃÂ¢ÃÂÃÂ ELO (elo_3p) + coins (win/loss)
       const coins = COIN_REWARDS.competitive_3p
       for (let i = 0; i < currentPlayers.length; i++) {
         const pl = currentPlayers[i]
         const p = profileMap[pl.profile_id]
         const pElo = p.elo_3p ?? p.elo ?? 0
         const isWin = pl.profile_id === winnerId
-        const placement = isWin ? 1 : (i + 1 === 1 ? 2 : i + 1) // winner = 1, others keep index order
-        const coinKey = Math.min(placement, 3) as 1 | 2 | 3
-        const earned = coins[coinKey]
-        const eloChange = isWin ? ELO_CONFIG.win_reward_3p : -ELO_CONFIG.loss_penalty_3p
+        const placement = isWin ? 1 : (i + 1 === 1 ? 2 : i + 1)
+        const earned = Math.round((isWin ? coins.win : coins.loss) * mult)
+        const eloChange = Math.round((isWin ? ELO_CONFIG.win_reward_3p : -ELO_CONFIG.loss_penalty_3p) * mult)
         const newElo = Math.max(0, pElo + eloChange)
         await supabase.from('profiles').update({
-          elo_3p: newElo, coins: p.coins + earned,
+          elo_3p: newElo, coins: Math.max(0, p.coins + earned),
           games_played: p.games_played + 1, games_won: isWin ? p.games_won + 1 : p.games_won,
         }).eq('id', p.id)
         await supabase.from('game_players').update({
@@ -415,7 +422,7 @@ export default function GamePage() {
       }
 
     } else if (!is1v1 && !is3p && winnerId) {
-      // Competitive 4P Ã¢ÂÂ ELO (elo_4p) + coins
+      // Competitive 4P ÃÂ¢ÃÂÃÂ ELO (elo_4p) + coins (win/loss)
       const coins = COIN_REWARDS.competitive_4p
       for (let i = 0; i < currentPlayers.length; i++) {
         const pl = currentPlayers[i]
@@ -423,12 +430,11 @@ export default function GamePage() {
         const pElo = p.elo_4p ?? p.elo ?? 0
         const isWin = pl.profile_id === winnerId
         const placement = isWin ? 1 : i + 1
-        const coinKey = placement as 1 | 2 | 3 | 4
-        const earned = coins[coinKey] ?? coins[4]
-        const eloChange = isWin ? ELO_CONFIG.win_reward_4p : -ELO_CONFIG.loss_penalty_4p
+        const earned = Math.round((isWin ? coins.win : coins.loss) * mult)
+        const eloChange = Math.round((isWin ? ELO_CONFIG.win_reward_4p : -ELO_CONFIG.loss_penalty_4p) * mult)
         const newElo = Math.max(0, pElo + eloChange)
         await supabase.from('profiles').update({
-          elo_4p: newElo, coins: p.coins + earned,
+          elo_4p: newElo, coins: Math.max(0, p.coins + earned),
           games_played: p.games_played + 1, games_won: isWin ? p.games_won + 1 : p.games_won,
         }).eq('id', p.id)
         await supabase.from('game_players').update({
@@ -467,7 +473,7 @@ export default function GamePage() {
     const currentPlayers = playersRef.current
     if (!profile || !game) { router.push('/'); return }
 
-    // Hosted games Ã¢ÂÂ no ELO, just navigate
+    // Hosted games ÃÂ¢ÃÂÃÂ no ELO, just navigate
     if (game.host_id || game.mode.startsWith('hosted')) {
       router.push('/')
       return
@@ -480,7 +486,7 @@ export default function GamePage() {
       // Award full win to the opponent
       const opponent = currentPlayers.find(p => p.profile_id !== profile.id)
       if (opponent) {
-        await distributeRewards(opponent.profile_id)
+        await distributeRewards(opponent.profile_id, true)
         await supabase.from('games').update({
           status: 'abandoned',
           winner_id: opponent.profile_id,
@@ -488,7 +494,7 @@ export default function GamePage() {
         }).eq('id', game.id)
       }
     } else if (is3p) {
-      // 3P leave Ã¢ÂÂ deduct ELO from leaver on elo_3p, abandon game
+      // 3P leave ÃÂ¢ÃÂÃÂ deduct ELO from leaver on elo_3p, abandon game
       const { data: freshProfiles } = await supabase.from('profiles').select('*').eq('id', profile.id)
       const p = freshProfiles?.[0] as Profile | undefined
       if (p) {
@@ -506,7 +512,7 @@ export default function GamePage() {
         completed_at: new Date().toISOString(),
       }).eq('id', game.id)
     } else if (!is1v1 && !is3p && currentPlayers.length > 0) {
-      // 4P leave Ã¢ÂÂ deduct ELO from leaver on elo_4p, abandon game
+      // 4P leave ÃÂ¢ÃÂÃÂ deduct ELO from leaver on elo_4p, abandon game
       const { data: freshProfiles } = await supabase.from('profiles').select('*').eq('id', profile.id)
       const p = freshProfiles?.[0] as Profile | undefined
       if (p) {
